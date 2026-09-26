@@ -90,7 +90,8 @@ function masterData_(email) {
   const employees = readObjects_(SHEETS.employees).filter(r => scopeEmployee_(user,r));
   const departments = readObjects_(SHEETS.departments);
   const kpis = readObjects_(SHEETS.kpis);
-  return {ok:true,user,employees,departments,kpis};
+  const roleKpis = readObjects_(SHEETS.roleKpis);
+  return {ok:true,user,employees,departments,kpis,roleKpis};
 }
 
 function confirmSale_(email, data) {
@@ -126,6 +127,10 @@ function createAssignment_(email, data) {
   const canAssign = user['Có quyền giao KPI'] === true || String(user['Có quyền giao KPI']).toUpperCase() === 'TRUE';
   if (!canAssign) throw new Error('NO_ASSIGN_PERMISSION');
   const period = data.period || getConfig_('CURRENT_PERIOD', '2026-09');
+  const assignee = readObjects_(SHEETS.employees).find(r => String(r.EMPLOYEE_ID) === String(data.assigneeId));
+  if (!assignee || !scopeEmployee_(user, assignee)) throw new Error('ASSIGNEE_OUT_OF_SCOPE');
+  const allowed = readObjects_(SHEETS.roleKpis).some(r => String(r['Mã KPI']) === String(data.kpiCode) && positionMatch_(assignee, r['Đơn vị/Vị trí']));
+  if (!allowed) throw new Error('KPI_NOT_ALLOWED_FOR_POSITION');
   const id = 'ASN-' + period + '-' + Utilities.getUuid().slice(0,8).toUpperCase();
   appendRowByHeaders_(SHEETS.assignments, {
     ASSIGNMENT_ID:id,
@@ -231,4 +236,23 @@ function recordPerformance_(email, data) {
   const obj = {RECORD_ID:id,PERIOD_ID:a.PERIOD_ID,'Ngày':today_(),EMPLOYEE_ID:user.EMPLOYEE_ID,'Nhân viên':emp['Họ tên']||user.EMPLOYEE_ID,ASSIGNMENT_ID:a.ASSIGNMENT_ID,'Mã KPI':a['Mã KPI'],'Tên KPI':a['Tên KPI'],'Giá trị thực hiện':Number(data.value||0),'Đơn vị':a['Đơn vị']||'','Minh chứng/Link':data.evidence||'','Ghi chú':data.note||'','Trạng thái':'DA_GUI'};
   sh.appendRow(headers.map(k => Object.prototype.hasOwnProperty.call(obj,k) ? obj[k] : ''));
   return {ok:true,recordId:id};
+}
+
+function positionMatch_(employee, positionName) {
+  const p=String(positionName||'').toLowerCase(), dept=String(employee['Phòng ban']||'').toLowerCase(), title=String(employee['Chức danh']||'').toLowerCase();
+  if (dept.includes('kinh doanh') && (title.includes('trưởng')||title.includes('manager'))) return p==='sale – trưởng phòng';
+  if (dept.includes('kinh doanh')) return p==='sale – nhân viên';
+  if (dept.includes('mua hàng') && title.includes('logistic')) return p==='mua hàng – logistics';
+  if (dept.includes('mua hàng') && (title.includes('chứng từ')||title.includes('nhập khẩu'))) return p==='mua hàng – chứng từ nk';
+  if (dept.includes('mua hàng') && title.includes('trưởng')) return p==='mua hàng – trưởng phòng';
+  if (dept.includes('mua hàng')) return p==='mua hàng – nhân viên';
+  if (dept.includes('kế toán') && (title.includes('trưởng')||title.includes('kế toán trưởng'))) return p==='kế toán – kế toán trưởng';
+  if (dept.includes('kế toán') && title.includes('thuế')) return p==='kế toán – thuế';
+  if (dept.includes('kế toán') && (title.includes('công nợ')||title.includes('kho'))) return p==='kế toán – công nợ & kho';
+  if (dept.includes('kế toán') && (title.includes('thanh toán')||title.includes('ttqt'))) return p==='kế toán – thanh toán & ttqt';
+  if (dept.includes('kế toán') && title.includes('thủ quỹ')) return p==='kế toán – thủ quỹ';
+  if (dept.includes('ban điều hành') && (title.includes('tổng giám đốc')||title==='tgd')) return p==='ban điều hành – tgd';
+  if (dept.includes('ban điều hành') && title.includes('coo')) return p==='ban điều hành – coo';
+  if (dept.includes('ban điều hành') && (title.includes('chủ tịch')||title.includes('bod'))) return p==='ban điều hành – bod';
+  return false;
 }
