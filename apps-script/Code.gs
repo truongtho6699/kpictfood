@@ -26,6 +26,7 @@ function doPost(e) {
     if (action === 'createSale') return json_(createSale_(email, payload.data || {}));
     if (action === 'createAssignment') return json_(createAssignment_(email, payload.data || {}));
     if (action === 'confirmSale') return json_(confirmSale_(email, payload.data || {}));
+    if (action === 'recordPerformance') return json_(recordPerformance_(email, payload.data || {}));
     return json_({ok:false,error:'UNKNOWN_ACTION'});
   } catch (err) {
     return json_({ok:false,error:String(err.message || err)});
@@ -216,3 +217,18 @@ function log_(uid, action, objectName, objectId, before, after) {
 }
 function today_() { return Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd'); }
 function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+
+function recordPerformance_(email, data) {
+  const user = resolveUser_(email);
+  if (!user) throw new Error('USER_NOT_AUTHORIZED');
+  const a = readObjects_(SHEETS.assignments).find(r => String(r.ASSIGNMENT_ID) === String(data.assignmentId));
+  if (!a) throw new Error('ASSIGNMENT_NOT_FOUND');
+  if (String(a.ASSIGNEE_ID) !== String(user.EMPLOYEE_ID)) throw new Error('OUT_OF_SCOPE');
+  const emp = readObjects_(SHEETS.employees).find(r => String(r.EMPLOYEE_ID) === String(user.EMPLOYEE_ID)) || {};
+  const id = 'PERF-' + Utilities.getUuid().slice(0,8).toUpperCase();
+  const sh = ss_().getSheetByName('THUC_HIEN_KPI');
+  const headers = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
+  const obj = {RECORD_ID:id,PERIOD_ID:a.PERIOD_ID,'Ngày':today_(),EMPLOYEE_ID:user.EMPLOYEE_ID,'Nhân viên':emp['Họ tên']||user.EMPLOYEE_ID,ASSIGNMENT_ID:a.ASSIGNMENT_ID,'Mã KPI':a['Mã KPI'],'Tên KPI':a['Tên KPI'],'Giá trị thực hiện':Number(data.value||0),'Đơn vị':a['Đơn vị']||'','Minh chứng/Link':data.evidence||'','Ghi chú':data.note||'','Trạng thái':'DA_GUI'};
+  sh.appendRow(headers.map(k => Object.prototype.hasOwnProperty.call(obj,k) ? obj[k] : ''));
+  return {ok:true,recordId:id};
+}
