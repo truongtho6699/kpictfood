@@ -11,6 +11,7 @@ function doGet(e) {
     const email = (e.parameter.email || Session.getActiveUser().getEmail() || '').toLowerCase();
     if (action === 'bootstrap') return json_(bootstrap_(email));
     if (action === 'dashboard') return json_(dashboard_(email, e.parameter.period || getConfig_('CURRENT_PERIOD', '2026-09')));
+    if (action === 'masterData') return json_(masterData_(email));
     return json_({ok:false,error:'UNKNOWN_ACTION'});
   } catch (err) {
     return json_({ok:false,error:String(err.message || err)});
@@ -24,6 +25,7 @@ function doPost(e) {
     const email = (payload.email || Session.getActiveUser().getEmail() || '').toLowerCase();
     if (action === 'createSale') return json_(createSale_(email, payload.data || {}));
     if (action === 'createAssignment') return json_(createAssignment_(email, payload.data || {}));
+    if (action === 'confirmSale') return json_(confirmSale_(email, payload.data || {}));
     return json_({ok:false,error:'UNKNOWN_ACTION'});
   } catch (err) {
     return json_({ok:false,error:String(err.message || err)});
@@ -79,6 +81,42 @@ function createSale_(email, data) {
   });
   log_(user.USER_ID, 'CREATE_SALE', 'DOANH_SO_NV', tx, '', JSON.stringify(data));
   return {ok:true,transactionId:tx};
+}
+
+function masterData_(email) {
+  const user = resolveUser_(email);
+  if (!user) throw new Error('USER_NOT_AUTHORIZED');
+  const employees = readObjects_(SHEETS.employees).filter(r => scopeEmployee_(user,r));
+  const departments = readObjects_(SHEETS.departments);
+  const kpis = readObjects_(SHEETS.kpis);
+  return {ok:true,user,employees,departments,kpis};
+}
+
+function confirmSale_(email, data) {
+  const user = resolveUser_(email);
+  if (!user) throw new Error('USER_NOT_AUTHORIZED');
+  if (!['COMPANY','DEPARTMENT'].includes(String(user.SCOPE))) throw new Error('NO_CONFIRM_PERMISSION');
+  const sh = ss_().getSheetByName(SHEETS.sales);
+  const values = sh.getDataRange().getValues();
+  const headers = values[0].map(String);
+  const idCol = headers.indexOf('TRANSACTION_ID');
+  const statusCol = headers.indexOf('Trạng thái');
+  const confirmerCol = headers.indexOf('Người xác nhận');
+  const timeCol = headers.indexOf('Thời gian xác nhận');
+  const empCol = headers.indexOf('EMPLOYEE_ID');
+  const target = String(data.transactionId || '');
+  for (let i=1;i<values.length;i++) {
+    if (String(values[i][idCol]) !== target) continue;
+    const emp = readObjects_(SHEETS.employees).find(e=>String(e.EMPLOYEE_ID)===String(values[i][empCol]));
+    if (!emp || !scopeEmployee_(user,emp)) throw new Error('OUT_OF_SCOPE');
+    const newStatus = data.approved === false ? 'TU_CHOI' : 'DA_XAC_NHAN';
+    sh.getRange(i+1,statusCol+1).setValue(newStatus);
+    if (confirmerCol>=0) sh.getRange(i+1,confirmerCol+1).setValue(user.EMPLOYEE_ID || user.USER_ID);
+    if (timeCol>=0) sh.getRange(i+1,timeCol+1).setValue(new Date());
+    log_(user.USER_ID,'CONFIRM_SALE',SHEETS.sales,target,String(values[i][statusCol]),newStatus);
+    return {ok:true,transactionId:target,status:newStatus};
+  }
+  throw new Error('TRANSACTION_NOT_FOUND');
 }
 
 function createAssignment_(email, data) {
