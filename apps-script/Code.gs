@@ -2,7 +2,7 @@ const SPREADSHEET_ID = '1z2vVKOAuIiDvYXzIcY4nl-vARVaTb_PC-EsWN294NeM';
 const SHEETS = {
   employees:'NHAN_VIEN', departments:'PHONG_BAN', kpis:'DANH_MUC_KPI', roleKpis:'KPI_THEO_VI_TRI',
   assignments:'GIAO_CHI_TIEU', allocations:'PHAN_BO_KPI', sales:'DOANH_SO_NV', results:'KET_QUA_KPI',
-  changes:'DIEU_CHINH_KPI', permissions:'PHAN_QUYEN', logs:'NHAT_KY_HE_THONG', config:'CAU_HINH'
+  changes:'DIEU_CHINH_KPI', permissions:'PHAN_QUYEN', logs:'NHAT_KY_HE_THONG', config:'CAU_HINH', incomeConfig:'CAU_HINH_3P', payroll:'BANG_LUONG'
 };
 
 function doGet(e) {
@@ -91,7 +91,11 @@ function masterData_(email) {
   const departments = readObjects_(SHEETS.departments);
   const kpis = readObjects_(SHEETS.kpis);
   const roleKpis = readObjects_(SHEETS.roleKpis);
-  return {ok:true,user,employees,departments,kpis,roleKpis};
+  const period = getConfig_('CURRENT_PERIOD', '2026-09');
+  const configs = readObjects_(SHEETS.incomeConfig).filter(r => String(r['Trạng thái']||'').toUpperCase()==='ACTIVE');
+  const incomeConfig = configs.find(r => String(r['Phạm vi'])==='EMPLOYEE' && String(r['Đối tượng'])===String(user.EMPLOYEE_ID)) || configs.find(r => String(r['Phạm vi'])==='DEFAULT') || null;
+  const payroll = readObjects_(SHEETS.payroll).find(r => String(r.PERIOD_ID)===String(period) && String(r.EMPLOYEE_ID)===String(user.EMPLOYEE_ID)) || null;
+  return {ok:true,user,employees,departments,kpis,roleKpis,incomeConfig,payroll};
 }
 
 function confirmSale_(email, data) {
