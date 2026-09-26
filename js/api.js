@@ -1,6 +1,6 @@
 const API={
   base:'https://script.google.com/macros/s/AKfycbyc1mapNPgjhAHiQrKO_iAjbj7JJnc8VfaDJvxkGeD0G8GdiBdhXyfj-ZSQtFGnOEbJ/exec',
-  email:localStorage.getItem('kpiEmail')||'',
+  email:localStorage.getItem('kpiEmail')||'ceo@ctfoods.vn',
   set(url,email){
     // Production API URL is fixed; keep only the temporary test identity locally.
     this.email=(email||'').trim();
