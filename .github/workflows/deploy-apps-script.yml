@@ -45,5 +45,8 @@ jobs:
       - name: Create Apps Script version
         run: clasp version "GitHub ${GITHUB_SHA::7}"
 
+      - name: Update production Web App deployment
+        run: clasp deploy --deploymentId AKfycbyc1mapNPgjhAHiQrKO_iAjbj7JJnc8VfaDJvxkGeD0G8GdiBdhXyfj-ZSQtFGnOEbJ --description "KPI CT FOOD API - Production ${GITHUB_SHA::7}"
+
       - name: Show Apps Script deployments
         run: clasp deployments
