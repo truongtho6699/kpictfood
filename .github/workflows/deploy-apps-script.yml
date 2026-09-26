@@ -44,3 +44,6 @@ jobs:
 
       - name: Create Apps Script version
         run: clasp version "GitHub ${GITHUB_SHA::7}"
+
+      - name: Show Apps Script deployments
+        run: clasp deployments
