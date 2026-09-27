@@ -2,13 +2,13 @@ const SPREADSHEET_ID = '1z2vVKOAuIiDvYXzIcY4nl-vARVaTb_PC-EsWN294NeM';
 const SHEETS = {
   employees:'NHAN_VIEN', departments:'PHONG_BAN', kpis:'DANH_MUC_KPI', roleKpis:'KPI_THEO_VI_TRI',
   assignments:'GIAO_CHI_TIEU', allocations:'PHAN_BO_KPI', sales:'DOANH_SO_NV', results:'KET_QUA_KPI',
-  changes:'DIEU_CHINH_KPI', permissions:'PHAN_QUYEN', logs:'NHAT_KY_HE_THONG', config:'CAU_HINH', incomeConfig:'CAU_HINH_3P', payroll:'BANG_LUONG', performance:'THUC_HIEN_KPI'
+  changes:'DIEU_CHINH_KPI', permissions:'PHAN_QUYEN', logs:'NHAT_KY_HE_THONG', config:'CAU_HINH', incomeConfig:'CAU_HINH_3P', payroll:'BANG_LUONG', performance:'THUC_HIEN_KPI', accounts:'TAI_KHOAN', sessions:'PHIEN_DANG_NHAP'
 };
 
 function doGet(e) {
   try {
     const action = (e.parameter.action || 'bootstrap').trim();
-    const email = (e.parameter.email || Session.getActiveUser().getEmail() || '').toLowerCase();
+    const email = authenticate_(e.parameter.token || '');
     if (action === 'bootstrap') return json_(bootstrap_(email));
     if (action === 'dashboard') return json_(dashboard_(email, e.parameter.period || getConfig_('CURRENT_PERIOD', '2026-09')));
     if (action === 'masterData') return json_(masterData_(email));
@@ -22,7 +22,9 @@ function doPost(e) {
   try {
     const payload = JSON.parse((e.postData && e.postData.contents) || '{}');
     const action = payload.action || '';
-    const email = (payload.email || Session.getActiveUser().getEmail() || '').toLowerCase();
+    if (action === 'login') return json_(login_(payload.data || {}));
+    if (action === 'logout') return json_(logout_(payload.token || ''));
+    const email = authenticate_(payload.token || '');
     if (action === 'createSale') return json_(createSale_(email, payload.data || {}));
     if (action === 'createAssignment') return json_(createAssignment_(email, payload.data || {}));
     if (action === 'confirmSale') return json_(confirmSale_(email, payload.data || {}));
@@ -33,6 +35,26 @@ function doPost(e) {
     return json_({ok:false,error:String(err.message || err)});
   }
 }
+
+function login_(data){
+  const email=String(data.email||'').trim().toLowerCase(),password=String(data.password||'');
+  if(!email||!password)throw new Error('EMAIL_PASSWORD_REQUIRED');
+  const account=readObjects_(SHEETS.accounts).find(r=>String(r.EMAIL||'').toLowerCase()===email);
+  if(!account||String(account.STATUS||'').toUpperCase()!=='ACTIVE')throw new Error('LOGIN_INVALID');
+  if(account.LOCK_UNTIL&&new Date(account.LOCK_UNTIL)>new Date())throw new Error('ACCOUNT_LOCKED');
+  const expected=hashPassword_(password,String(account.SALT||''));if(expected!==String(account.PASSWORD_HASH||'')){updateAccountLogin_(email,false);throw new Error('LOGIN_INVALID');}
+  if(!resolveUser_(email))throw new Error('USER_NOT_AUTHORIZED');
+  updateAccountLogin_(email,true);
+  const token=Utilities.getUuid()+Utilities.getUuid(),now=new Date(),expires=new Date(now.getTime()+12*60*60*1000);
+  appendRowByHeaders_(SHEETS.sessions,{TOKEN_HASH:hashToken_(token),EMAIL:email,CREATED_AT:now,EXPIRES_AT:expires,REVOKED:false,USER_AGENT:'',LAST_USED_AT:now});
+  return {ok:true,token,expiresAt:expires,user:resolveUser_(email)};
+}
+function logout_(token){if(!token)return {ok:true};const sh=ss_().getSheetByName(SHEETS.sessions),v=sh.getDataRange().getValues(),h=v[0].map(String),tc=h.indexOf('TOKEN_HASH'),rc=h.indexOf('REVOKED');const x=hashToken_(token);for(let i=1;i<v.length;i++)if(String(v[i][tc])===x){sh.getRange(i+1,rc+1).setValue(true);break;}return {ok:true};}
+function authenticate_(token){if(!token)throw new Error('AUTH_REQUIRED');const x=hashToken_(token),s=readObjects_(SHEETS.sessions).find(r=>String(r.TOKEN_HASH)===x&&String(r.REVOKED).toUpperCase()!=='TRUE'&&new Date(r.EXPIRES_AT)>new Date());if(!s)throw new Error('SESSION_EXPIRED');return String(s.EMAIL||'').toLowerCase();}
+function hashPassword_(password,salt){return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,password+'|'+salt,Utilities.Charset.UTF_8));}
+function hashToken_(token){return Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,token,Utilities.Charset.UTF_8));}
+function updateAccountLogin_(email,ok){const sh=ss_().getSheetByName(SHEETS.accounts),v=sh.getDataRange().getValues(),h=v[0].map(String),ec=h.indexOf('EMAIL'),fc=h.indexOf('FAILED_ATTEMPTS'),lc=h.indexOf('LOCK_UNTIL'),last=h.indexOf('LAST_LOGIN');for(let i=1;i<v.length;i++)if(String(v[i][ec]).toLowerCase()===email){if(ok){sh.getRange(i+1,fc+1).setValue(0);if(lc>=0)sh.getRange(i+1,lc+1).clearContent();if(last>=0)sh.getRange(i+1,last+1).setValue(new Date());}else{const n=Number(v[i][fc]||0)+1;sh.getRange(i+1,fc+1).setValue(n);if(n>=5&&lc>=0)sh.getRange(i+1,lc+1).setValue(new Date(Date.now()+15*60*1000));}return;}}
+function setInitialPassword_(email,password){const u=resolveUser_(String(email||'').toLowerCase());if(!u)throw new Error('USER_NOT_AUTHORIZED');if(String(password||'').length<8)throw new Error('PASSWORD_TOO_SHORT');const existing=readObjects_(SHEETS.accounts).find(r=>String(r.EMAIL||'').toLowerCase()===String(email).toLowerCase());if(existing)throw new Error('ACCOUNT_ALREADY_EXISTS');const salt=Utilities.getUuid();appendRowByHeaders_(SHEETS.accounts,{EMAIL:String(email).toLowerCase(),PASSWORD_HASH:hashPassword_(password,salt),SALT:salt,STATUS:'ACTIVE',FAILED_ATTEMPTS:0,LOCK_UNTIL:'',LAST_LOGIN:'',PASSWORD_UPDATED_AT:new Date()});return true;}
 
 function bootstrap_(email) {
   const user = resolveUser_(email);
