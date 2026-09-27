@@ -30,6 +30,7 @@ function doPost(e) {
     if (action === 'confirmSale') return json_(confirmSale_(email, payload.data || {}));
     if (action === 'recordPerformance') return json_(recordPerformance_(email, payload.data || {}));
     if (action === 'confirmPerformance') return json_(confirmPerformance_(email, payload.data || {}));
+    if (action === 'adminSetPassword') return json_(adminSetPassword_(email, payload.data || {}));
     return json_({ok:false,error:'UNKNOWN_ACTION'});
   } catch (err) {
     return json_({ok:false,error:String(err.message || err)});
@@ -56,6 +57,16 @@ function hashToken_(token){return Utilities.base64Encode(Utilities.computeDigest
 function updateAccountLogin_(email,ok){const sh=ss_().getSheetByName(SHEETS.accounts),v=sh.getDataRange().getValues(),h=v[0].map(String),ec=h.indexOf('EMAIL'),fc=h.indexOf('FAILED_ATTEMPTS'),lc=h.indexOf('LOCK_UNTIL'),last=h.indexOf('LAST_LOGIN');for(let i=1;i<v.length;i++)if(String(v[i][ec]).toLowerCase()===email){if(ok){sh.getRange(i+1,fc+1).setValue(0);if(lc>=0)sh.getRange(i+1,lc+1).clearContent();if(last>=0)sh.getRange(i+1,last+1).setValue(new Date());}else{const n=Number(v[i][fc]||0)+1;sh.getRange(i+1,fc+1).setValue(n);if(n>=5&&lc>=0)sh.getRange(i+1,lc+1).setValue(new Date(Date.now()+15*60*1000));}return;}}
 function setInitialPassword_(email,password){const u=resolveUser_(String(email||'').toLowerCase());if(!u)throw new Error('USER_NOT_AUTHORIZED');if(String(password||'').length<8)throw new Error('PASSWORD_TOO_SHORT');const existing=readObjects_(SHEETS.accounts).find(r=>String(r.EMAIL||'').toLowerCase()===String(email).toLowerCase());if(existing)throw new Error('ACCOUNT_ALREADY_EXISTS');const salt=Utilities.getUuid();appendRowByHeaders_(SHEETS.accounts,{EMAIL:String(email).toLowerCase(),PASSWORD_HASH:hashPassword_(password,salt),SALT:salt,STATUS:'ACTIVE',FAILED_ATTEMPTS:0,LOCK_UNTIL:'',LAST_LOGIN:'',PASSWORD_UPDATED_AT:new Date()});return true;}
 
+function adminSetPassword_(actorEmail,data){
+  const actor=resolveUser_(actorEmail);if(!actor||!['EXECUTIVE','BOARD','ADMIN'].includes(String(actor.ROLE)))throw new Error('NO_ADMIN_PERMISSION');
+  const email=String(data.email||'').trim().toLowerCase(),password=String(data.password||'');
+  if(!resolveUser_(email))throw new Error('USER_NOT_AUTHORIZED');if(password.length<8)throw new Error('PASSWORD_TOO_SHORT');
+  const sh=ss_().getSheetByName(SHEETS.accounts),v=sh.getDataRange().getValues(),h=v[0].map(String),ec=h.indexOf('EMAIL'),hc=h.indexOf('PASSWORD_HASH'),sc=h.indexOf('SALT'),st=h.indexOf('STATUS'),fc=h.indexOf('FAILED_ATTEMPTS'),lc=h.indexOf('LOCK_UNTIL'),pc=h.indexOf('PASSWORD_UPDATED_AT'),salt=Utilities.getUuid(),hash=hashPassword_(password,salt);
+  let found=false;for(let i=1;i<v.length;i++)if(String(v[i][ec]).toLowerCase()===email){found=true;sh.getRange(i+1,hc+1).setValue(hash);sh.getRange(i+1,sc+1).setValue(salt);sh.getRange(i+1,st+1).setValue('ACTIVE');sh.getRange(i+1,fc+1).setValue(0);if(lc>=0)sh.getRange(i+1,lc+1).clearContent();if(pc>=0)sh.getRange(i+1,pc+1).setValue(new Date());break;}
+  if(!found)appendRowByHeaders_(SHEETS.accounts,{EMAIL:email,PASSWORD_HASH:hash,SALT:salt,STATUS:'ACTIVE',FAILED_ATTEMPTS:0,LOCK_UNTIL:'',LAST_LOGIN:'',PASSWORD_UPDATED_AT:new Date()});
+  revokeSessions_(email);log_(actor.USER_ID,'ADMIN_SET_PASSWORD',SHEETS.accounts,email,'','PASSWORD_RESET');return {ok:true,email};
+}
+function revokeSessions_(email){const sh=ss_().getSheetByName(SHEETS.sessions),v=sh.getDataRange().getValues();if(v.length<2)return;const h=v[0].map(String),ec=h.indexOf('EMAIL'),rc=h.indexOf('REVOKED');for(let i=1;i<v.length;i++)if(String(v[i][ec]).toLowerCase()===String(email).toLowerCase()&&rc>=0)sh.getRange(i+1,rc+1).setValue(true);}
 function bootstrap_(email) {
   const user = resolveUser_(email);
   if (!user) throw new Error('USER_NOT_AUTHORIZED');
