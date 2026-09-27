@@ -2,7 +2,7 @@ const SPREADSHEET_ID = '1z2vVKOAuIiDvYXzIcY4nl-vARVaTb_PC-EsWN294NeM';
 const SHEETS = {
   employees:'NHAN_VIEN', departments:'PHONG_BAN', kpis:'DANH_MUC_KPI', roleKpis:'KPI_THEO_VI_TRI',
   assignments:'GIAO_CHI_TIEU', allocations:'PHAN_BO_KPI', sales:'DOANH_SO_NV', results:'KET_QUA_KPI',
-  changes:'DIEU_CHINH_KPI', permissions:'PHAN_QUYEN', logs:'NHAT_KY_HE_THONG', config:'CAU_HINH', incomeConfig:'CAU_HINH_3P', payroll:'BANG_LUONG'
+  changes:'DIEU_CHINH_KPI', permissions:'PHAN_QUYEN', logs:'NHAT_KY_HE_THONG', config:'CAU_HINH', incomeConfig:'CAU_HINH_3P', payroll:'BANG_LUONG', performance:'THUC_HIEN_KPI'
 };
 
 function doGet(e) {
@@ -27,6 +27,7 @@ function doPost(e) {
     if (action === 'createAssignment') return json_(createAssignment_(email, payload.data || {}));
     if (action === 'confirmSale') return json_(confirmSale_(email, payload.data || {}));
     if (action === 'recordPerformance') return json_(recordPerformance_(email, payload.data || {}));
+    if (action === 'confirmPerformance') return json_(confirmPerformance_(email, payload.data || {}));
     return json_({ok:false,error:'UNKNOWN_ACTION'});
   } catch (err) {
     return json_({ok:false,error:String(err.message || err)});
@@ -46,7 +47,8 @@ function dashboard_(email, period) {
   const results = readObjects_(SHEETS.results).filter(r => (!period || String(r.PERIOD_ID) === String(period)) && scopeResult_(user, r, employees));
   const assignments = readObjects_(SHEETS.assignments).filter(r => (!period || String(r.PERIOD_ID) === String(period)) && scopeAssignment_(user, r, employees));
   const sales = readObjects_(SHEETS.sales).filter(r => (!period || String(r.PERIOD_ID) === String(period)) && scopeSale_(user, r, employees));
-  return {ok:true,user,period,employees,results,assignments,sales};
+  const performance = readObjects_(SHEETS.performance).filter(r => (!period || String(r.PERIOD_ID) === String(period)) && scopePerformance_(user,r,employees));
+  return {ok:true,user,period,employees,results,assignments,sales,performance};
 }
 
 function createSale_(email, data) {
@@ -190,6 +192,7 @@ function scopeEmployee_(u, r) {
 }
 function scopeSale_(u, r, employees) { return u.SCOPE === 'COMPANY' || employees.some(e => String(e.EMPLOYEE_ID) === String(r.EMPLOYEE_ID)); }
 function scopeResult_(u, r, employees) { return u.SCOPE === 'COMPANY' || employees.some(e => String(e.EMPLOYEE_ID) === String(r.EMPLOYEE_ID)); }
+function scopePerformance_(u, r, employees) { return u.SCOPE === 'COMPANY' || employees.some(e => String(e.EMPLOYEE_ID) === String(r.EMPLOYEE_ID)); }
 function scopeAssignment_(u, r) {
   if (u.SCOPE === 'COMPANY') return true;
   if (u.SCOPE === 'DEPARTMENT') return String(r.DEPARTMENT_ID) === String(u.DEPARTMENT_ID);
@@ -242,14 +245,42 @@ function recordPerformance_(email, data) {
   const a = readObjects_(SHEETS.assignments).find(r => String(r.ASSIGNMENT_ID) === String(data.assignmentId));
   if (!a) throw new Error('ASSIGNMENT_NOT_FOUND');
   if (String(a.ASSIGNEE_ID) !== String(user.EMPLOYEE_ID)) throw new Error('OUT_OF_SCOPE');
+  if (String(a['Trạng thái']) === 'DA_CHOT') throw new Error('ASSIGNMENT_CLOSED');
   const emp = readObjects_(SHEETS.employees).find(r => String(r.EMPLOYEE_ID) === String(user.EMPLOYEE_ID)) || {};
   const id = 'PERF-' + Utilities.getUuid().slice(0,8).toUpperCase();
-  const sh = ss_().getSheetByName('THUC_HIEN_KPI');
-  const headers = sh.getRange(1,1,1,sh.getLastColumn()).getValues()[0];
-  const obj = {RECORD_ID:id,PERIOD_ID:a.PERIOD_ID,'Ngày':today_(),EMPLOYEE_ID:user.EMPLOYEE_ID,'Nhân viên':emp['Họ tên']||user.EMPLOYEE_ID,ASSIGNMENT_ID:a.ASSIGNMENT_ID,'Mã KPI':a['Mã KPI'],'Tên KPI':a['Tên KPI'],'Giá trị thực hiện':Number(data.value||0),'Đơn vị':a['Đơn vị']||'','Minh chứng/Link':data.evidence||'','Ghi chú':data.note||'','Trạng thái':'DA_GUI'};
-  sh.appendRow(headers.map(k => Object.prototype.hasOwnProperty.call(obj,k) ? obj[k] : ''));
+  appendRowByHeaders_(SHEETS.performance,{RECORD_ID:id,PERIOD_ID:a.PERIOD_ID,'Ngày':data.date||today_(),EMPLOYEE_ID:user.EMPLOYEE_ID,'Nhân viên':emp['Họ tên']||user.EMPLOYEE_ID,ASSIGNMENT_ID:a.ASSIGNMENT_ID,'Mã KPI':a['Mã KPI'],'Tên KPI':a['Tên KPI'],'Giá trị thực hiện':Number(data.value||0),'Đơn vị':a['Đơn vị']||'','Minh chứng/Link':data.evidence||'','Ghi chú':data.note||'','Trạng thái':'DA_GUI','Người xác nhận':'','Thời gian xác nhận':''});
+  setAssignmentStatus_(a.ASSIGNMENT_ID,'DANG_THUC_HIEN');
+  upsertResult_(a,user.EMPLOYEE_ID);
+  log_(user.USER_ID,'RECORD_PERFORMANCE',SHEETS.performance,id,'',JSON.stringify(data));
   return {ok:true,recordId:id};
 }
+
+function confirmPerformance_(email,data){
+  const user=resolveUser_(email); if(!user) throw new Error('USER_NOT_AUTHORIZED');
+  if(!['COMPANY','DEPARTMENT'].includes(String(user.SCOPE))) throw new Error('NO_CONFIRM_PERMISSION');
+  const sh=ss_().getSheetByName(SHEETS.performance),v=sh.getDataRange().getValues(),h=v[0].map(String);
+  const idc=h.indexOf('RECORD_ID'),ec=h.indexOf('EMPLOYEE_ID'),sc=h.indexOf('Trạng thái'),uc=h.indexOf('Người xác nhận'),tc=h.indexOf('Thời gian xác nhận'),ac=h.indexOf('ASSIGNMENT_ID');
+  for(let i=1;i<v.length;i++){if(String(v[i][idc])!==String(data.recordId))continue;const emp=readObjects_(SHEETS.employees).find(e=>String(e.EMPLOYEE_ID)===String(v[i][ec]));if(!emp||!scopeEmployee_(user,emp))throw new Error('OUT_OF_SCOPE');const status=data.approved===false?'TU_CHOI':'DA_XAC_NHAN';sh.getRange(i+1,sc+1).setValue(status);if(uc>=0)sh.getRange(i+1,uc+1).setValue(user.EMPLOYEE_ID||user.USER_ID);if(tc>=0)sh.getRange(i+1,tc+1).setValue(new Date());const a=readObjects_(SHEETS.assignments).find(x=>String(x.ASSIGNMENT_ID)===String(v[i][ac]));if(a)upsertResult_(a,v[i][ec]);log_(user.USER_ID,'CONFIRM_PERFORMANCE',SHEETS.performance,data.recordId,'',status);return {ok:true,status};}
+  throw new Error('PERFORMANCE_NOT_FOUND');
+}
+
+function setAssignmentStatus_(id,status){
+  const sh=ss_().getSheetByName(SHEETS.assignments),v=sh.getDataRange().getValues(),h=v[0].map(String),ic=h.indexOf('ASSIGNMENT_ID'),sc=h.indexOf('Trạng thái');
+  if(ic<0||sc<0)return;for(let i=1;i<v.length;i++)if(String(v[i][ic])===String(id)){sh.getRange(i+1,sc+1).setValue(status);return;}
+}
+
+function upsertResult_(a,employeeId){
+  const records=readObjects_(SHEETS.performance).filter(r=>String(r.ASSIGNMENT_ID)===String(a.ASSIGNMENT_ID)&&String(r['Trạng thái'])!=='TU_CHOI');
+  if(!records.length)return;
+  const actual=records.reduce((s,r)=>s+Number(r['Giá trị thực hiện']||0),0),target=Number(a.Target||0),direction=String(a['Chiều']||'Tăng').toLowerCase();
+  let completion=0;if(target===0)completion=actual===0?1:0;else completion=direction.includes('giảm')?target/Math.max(actual,0.0000001):actual/target;
+  const score=score_(completion),weight=Number(a['Trọng số %']||0),converted=score*weight/100;
+  const sh=ss_().getSheetByName(SHEETS.results),v=sh.getDataRange().getValues(),h=v[0].map(String),ac=h.indexOf('ASSIGNMENT_ID');
+  const obj={PERIOD_ID:a.PERIOD_ID,ASSIGNMENT_ID:a.ASSIGNMENT_ID,EMPLOYEE_ID:employeeId,'Mã KPI':a['Mã KPI'],Target:target,'Thực hiện':actual,'% Hoàn thành':completion,'Điểm 1-5':score,'Trọng số %':weight,'Điểm quy đổi':converted,'Trạng thái dữ liệu':records.some(r=>String(r['Trạng thái'])==='DA_XAC_NHAN')?'DA_XAC_NHAN':'DA_GUI','Trạng thái chốt':'DANG_THUC_HIEN'};
+  for(let i=1;i<v.length;i++)if(String(v[i][ac])===String(a.ASSIGNMENT_ID)){h.forEach((k,j)=>{if(Object.prototype.hasOwnProperty.call(obj,k))sh.getRange(i+1,j+1).setValue(obj[k])});return;}
+  appendRowByHeaders_(SHEETS.results,obj);
+}
+function score_(completion){const x=Number(completion||0);if(x<.7)return 1;if(x<.85)return 2;if(x<.95)return 3;if(x<1)return 4;return 5;}
 
 function positionMatch_(employee, positionName) {
   const p=String(positionName||'').toLowerCase(), dept=String(employee['Phòng ban']||'').toLowerCase(), title=String(employee['Chức danh']||'').toLowerCase();
