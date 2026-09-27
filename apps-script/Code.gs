@@ -133,8 +133,17 @@ function createAssignment_(email, data) {
   const period = data.period || getConfig_('CURRENT_PERIOD', '2026-09');
   const assignee = readObjects_(SHEETS.employees).find(r => String(r.EMPLOYEE_ID) === String(data.assigneeId));
   if (!assignee || !scopeEmployee_(user, assignee)) throw new Error('ASSIGNEE_OUT_OF_SCOPE');
-  const allowed = readObjects_(SHEETS.roleKpis).some(r => String(r['Mã KPI']) === String(data.kpiCode) && positionMatch_(assignee, r['Đơn vị/Vị trí']));
-  if (!allowed) throw new Error('KPI_NOT_ALLOWED_FOR_POSITION');
+  const roleRows = readObjects_(SHEETS.roleKpis).filter(r => positionMatch_(assignee, r['Đơn vị/Vị trí']));
+  const activeRows = roleRows.filter(r => String(r['Trạng thái'] || '').toUpperCase() === 'ACTIVE');
+  const totalWeight = activeRows.reduce((s,r) => s + Number(r['Trọng số mặc định %'] || 0), 0);
+  if (Math.abs(totalWeight - 100) > 0.001) throw new Error('POSITION_KPI_WEIGHT_NOT_100');
+  const roleKpi = activeRows.find(r => String(r['Mã KPI']) === String(data.kpiCode));
+  if (!roleKpi) throw new Error('KPI_NOT_ALLOWED_FOR_POSITION');
+  const masterKpi = readObjects_(SHEETS.kpis).find(r => String(r['Mã KPI']) === String(data.kpiCode)) || {};
+  const defaultTarget = roleKpi['Target mặc định'];
+  const defaultWeight = roleKpi['Trọng số mặc định %'];
+  if (defaultTarget === '' || defaultTarget === null || defaultTarget === undefined) throw new Error('KPI_TARGET_NOT_CONFIGURED');
+  if (defaultWeight === '' || defaultWeight === null || defaultWeight === undefined) throw new Error('KPI_WEIGHT_NOT_CONFIGURED');
   const id = 'ASN-' + period + '-' + Utilities.getUuid().slice(0,8).toUpperCase();
   appendRowByHeaders_(SHEETS.assignments, {
     ASSIGNMENT_ID:id,
@@ -150,11 +159,11 @@ function createAssignment_(email, data) {
     DEPARTMENT_ID:data.departmentId || user.DEPARTMENT_ID || '',
     'Phòng ban':data.departmentName || '',
     'Mã KPI':data.kpiCode || '',
-    'Tên KPI':data.kpiName || '',
-    'Đơn vị':data.unit || '',
-    'Chiều':data.direction || 'Tăng',
-    Target:Number(data.target || 0),
-    'Trọng số %':Number(data.weight || 0),
+    'Tên KPI':roleKpi['Tên KPI'] || masterKpi['Tên KPI'] || '',
+    'Đơn vị':masterKpi['Đơn vị'] || '',
+    'Chiều':masterKpi['Chiều'] || 'Tăng',
+    Target:Number(defaultTarget),
+    'Trọng số %':Number(defaultWeight),
     'Ngày giao':data.assignDate || today_(),
     'Ngày hiệu lực':data.startDate || today_(),
     'Ngày hết hạn':data.endDate || '',
