@@ -1,4 +1,6 @@
 <!doctype html><html lang="vi"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>KPI CT FOOD</title><link rel="stylesheet" href="css/app.css"></head><body>
+<div id="loginScreen" class="login-screen"><form id="loginForm" class="login-card"><div class="brand login-brand">KPI <span>CT FOOD</span></div><h1>Đăng nhập</h1><p class="muted">Sử dụng tài khoản được cấp theo email công ty.</p><label>Email<input name="email" type="email" autocomplete="username" required></label><label>Mật khẩu<input name="password" type="password" autocomplete="current-password" minlength="8" required></label><button type="submit">Đăng nhập</button><div id="loginError"></div></form></div>
+<div id="appShell" class="app-shell hidden">
 <aside><div class="brand">KPI <span>CT FOOD</span></div><div id="user"></div><nav>
 <button data-view="dashboard" class="active">Tổng quan</button>
 <button data-view="perform">Thực hiện</button>
@@ -6,7 +8,7 @@
 <button data-view="income">Thu nhập dự tính</button>
 <button data-view="profile">Cá nhân</button>
 <button data-view="admin" class="admin-only">Quản trị</button>
-</nav></aside>
+</nav><button id="logout" class="logout-btn">Đăng xuất</button></aside>
 <main><header><div><h1 id="title">Tổng quan</h1><small id="period"></small></div><button id="refresh">Làm mới</button></header><div id="notice"></div>
 <section id="dashboard" class="view"></section>
 <section id="perform" class="view hidden"><div class="page-head"><div><h2>Thực hiện chỉ tiêu</h2><p>Ghi nhận kết quả theo các KPI được giao trong kỳ.</p></div></div><div id="performList"></div></section>
@@ -14,4 +16,4 @@
 <section id="income" class="view hidden"><div id="incomeContent"></div></section>
 <section id="profile" class="view hidden"><div id="profileContent"></div></section>
 <section id="admin" class="view hidden"><div class="tabs"><button data-tab="users" class="active">Người dùng</button><button data-tab="org">Phòng ban & chức vụ</button><button data-tab="kpis">Danh mục KPI</button><button data-tab="periods">Kỳ KPI</button><button data-tab="salary">Cấu hình 3P</button><button data-tab="payroll">Bảng lương</button><button data-tab="logs">Nhật ký hệ thống</button></div><div id="adminContent"></div></section>
-</main><script src="js/api.js"></script><script src="js/app.js"></script></body></html>
+</main></div><script src="js/api.js"></script><script src="js/app.js"></script></body></html>
