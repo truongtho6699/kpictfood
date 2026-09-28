@@ -126,11 +126,13 @@ function masterData_(email) {
   const departments = readObjects_(SHEETS.departments);
   const kpis = readObjects_(SHEETS.kpis);
   const roleKpis = readObjects_(SHEETS.roleKpis);
+  const positions = readObjects_(SHEETS.positions);
+  const permissions = ['ADMIN','BOARD','EXECUTIVE'].includes(String(user.ROLE)) ? readObjects_(SHEETS.permissions) : [];
   const period = getConfig_('CURRENT_PERIOD', '2026-09');
   const configs = readObjects_(SHEETS.incomeConfig).filter(r => String(r['Trạng thái']||'').toUpperCase()==='ACTIVE');
   const incomeConfig = configs.find(r => String(r['Phạm vi'])==='EMPLOYEE' && String(r['Đối tượng'])===String(user.EMPLOYEE_ID)) || configs.find(r => String(r['Phạm vi'])==='DEFAULT') || null;
   const payroll = readObjects_(SHEETS.payroll).find(r => String(r.PERIOD_ID)===String(period) && String(r.EMPLOYEE_ID)===String(user.EMPLOYEE_ID)) || null;
-  return {ok:true,user,employees,departments,kpis,roleKpis,incomeConfig,payroll};
+  return {ok:true,user,employees,departments,kpis,roleKpis,positions,permissions,incomeConfig,payroll};
 }
 
 function confirmSale_(email, data) {
@@ -309,11 +311,18 @@ function upsertResult_(a,employeeId){
   let completion=0;if(target===0)completion=actual===0?1:0;else completion=direction.includes('giảm')?target/Math.max(actual,0.0000001):actual/target;
   const score=score_(completion),weight=Number(a['Trọng số %']||0),converted=score*weight/100;
   const sh=ss_().getSheetByName(SHEETS.results),v=sh.getDataRange().getValues(),h=v[0].map(String),ac=h.indexOf('ASSIGNMENT_ID');
-  const obj={PERIOD_ID:a.PERIOD_ID,ASSIGNMENT_ID:a.ASSIGNMENT_ID,EMPLOYEE_ID:employeeId,'Mã KPI':a['Mã KPI'],Target:target,'Thực hiện':actual,'% Hoàn thành':completion,'Điểm 1-5':score,'Trọng số %':weight,'Điểm quy đổi':converted,'Trạng thái dữ liệu':records.some(r=>String(r['Trạng thái'])==='DA_XAC_NHAN')?'DA_XAC_NHAN':'DA_GUI','Trạng thái chốt':'DANG_THUC_HIEN'};
+  const requireConfirm=String(getConfig_('DATA_CONFIRM_REQUIRED','true')).toLowerCase()==='true';
+  const allConfirmed=records.length>0&&records.every(r=>String(r['Trạng thái'])==='DA_XAC_NHAN');
+  const dataStatus=requireConfirm?(allConfirmed?'DA_XAC_NHAN':'CHO_XAC_NHAN'):'DA_XAC_NHAN';
+  const obj={PERIOD_ID:a.PERIOD_ID,ASSIGNMENT_ID:a.ASSIGNMENT_ID,EMPLOYEE_ID:employeeId,'Mã KPI':a['Mã KPI'],Target:target,'Thực hiện':actual,'% Hoàn thành':completion,'Điểm 1-5':score,'Trọng số %':weight,'Điểm quy đổi':converted,'Trạng thái dữ liệu':dataStatus,'Trạng thái chốt':'DANG_THUC_HIEN'};
   for(let i=1;i<v.length;i++)if(String(v[i][ac])===String(a.ASSIGNMENT_ID)){h.forEach((k,j)=>{if(Object.prototype.hasOwnProperty.call(obj,k))sh.getRange(i+1,j+1).setValue(obj[k])});return;}
   appendRowByHeaders_(SHEETS.results,obj);
 }
-function score_(completion){const x=Number(completion||0);if(x<.7)return 1;if(x<.85)return 2;if(x<.95)return 3;if(x<1)return 4;return 5;}
+function score_(completion){
+  const x=Number(completion||0);
+  const t1=Number(getConfig_('SCORE_1_MAX',.7)),t2=Number(getConfig_('SCORE_2_MAX',.85)),t3=Number(getConfig_('SCORE_3_MAX',.95)),t4=Number(getConfig_('SCORE_4_MAX',1));
+  if(x<t1)return 1;if(x<t2)return 2;if(x<t3)return 3;if(x<t4)return 4;return 5;
+}
 
 function positionMatch_(employee, positionName) {
   const p=String(positionName||'').toLowerCase(), dept=String(employee['Phòng ban']||'').toLowerCase(), title=String(employee['Chức danh']||'').toLowerCase();
