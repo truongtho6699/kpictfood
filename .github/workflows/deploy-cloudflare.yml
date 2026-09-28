@@ -50,3 +50,9 @@ jobs:
           cat /tmp/api.json
           test "$HTTP_CODE" = "200"
           grep -q '"error":"AUTH_REQUIRED"' /tmp/api.json
+          LOGIN_CODE=$(curl -sS --retry 3 --retry-delay 2 -o /tmp/login.json -w '%{http_code}' -X POST -H 'Content-Type: text/plain;charset=utf-8' --data '{"action":"login","data":{"email":"ceo@ctfoods.vn","password":"Demo1234"}}' https://kpictfood.truongtho53.workers.dev/api)
+          echo "Login HTTP: $LOGIN_CODE"
+          cat /tmp/login.json | sed -E 's/"token":"[^"]+"/"token":"***"/g'
+          test "$LOGIN_CODE" = "200"
+          grep -q '"ok":true' /tmp/login.json
+          grep -q '"token":' /tmp/login.json
