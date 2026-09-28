@@ -31,6 +31,7 @@ function doPost(e) {
     if (action === 'recordPerformance') return json_(recordPerformance_(email, payload.data || {}));
     if (action === 'confirmPerformance') return json_(confirmPerformance_(email, payload.data || {}));
     if (action === 'adminSetPassword') return json_(adminSetPassword_(email, payload.data || {}));
+    if (action === 'adminUpsertEmployee') return json_(adminUpsertEmployee_(email, payload.data || {}));
     return json_({ok:false,error:'UNKNOWN_ACTION'});
   } catch (err) {
     return json_({ok:false,error:String(err.message || err)});
@@ -66,6 +67,25 @@ function adminSetPassword_(actorEmail,data){
   if(!found)appendRowByHeaders_(SHEETS.accounts,{EMAIL:email,PASSWORD_HASH:hash,SALT:salt,STATUS:'ACTIVE',FAILED_ATTEMPTS:0,LOCK_UNTIL:'',LAST_LOGIN:'',PASSWORD_UPDATED_AT:new Date()});
   revokeSessions_(email);log_(actor.USER_ID,'ADMIN_SET_PASSWORD',SHEETS.accounts,email,'','PASSWORD_RESET');return {ok:true,email};
 }
+function adminUpsertEmployee_(actorEmail,data){
+  const actor=resolveUser_(actorEmail);if(!actor||!['EXECUTIVE','BOARD','ADMIN'].includes(String(actor.ROLE)))throw new Error('NO_ADMIN_PERMISSION');
+  const id=String(data.employeeId||'').trim(),name=String(data.name||'').trim(),email=String(data.email||'').trim().toLowerCase(),depId=String(data.departmentId||'').trim(),title=String(data.title||'').trim(),managerId=String(data.managerId||'').trim(),role=String(data.role||'EMPLOYEE').trim().toUpperCase(),status=String(data.status||'ACTIVE').trim().toUpperCase();
+  if(!id||!name||!depId||!title)throw new Error('EMPLOYEE_REQUIRED_FIELDS');
+  if(email&&!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email))throw new Error('EMAIL_INVALID');
+  const allowed=['ADMIN','BOARD','EXECUTIVE','MANAGER','EMPLOYEE'];if(!allowed.includes(role))throw new Error('ROLE_INVALID');
+  const emps=readObjects_(SHEETS.employees),existing=emps.find(x=>String(x.EMPLOYEE_ID)===id),dup=email&&emps.find(x=>String(x.Email||'').toLowerCase()===email&&String(x.EMPLOYEE_ID)!==id);if(dup)throw new Error('EMAIL_ALREADY_USED');
+  const manager=managerId?emps.find(x=>String(x.EMPLOYEE_ID)===managerId):null,dep=readObjects_(SHEETS.departments).find(x=>String(x.DEPARTMENT_ID)===depId);
+  const row={EMPLOYEE_ID:id,'Họ tên':name,Email:email,DEPARTMENT_ID:depId,'Phòng ban':dep?String(dep['Tên phòng ban']||dep['Phòng ban']||''):String(data.departmentName||''),'Chức danh':title,MANAGER_ID:managerId,'Quản lý trực tiếp':manager?String(manager['Họ tên']||''):'','Ngày vào làm':String(data.startDate||''),'Ngày nghỉ':'',STATUS:status,ROLE:role};
+  upsertByKey_(SHEETS.employees,'EMPLOYEE_ID',id,row);
+  const oldEmail=existing?String(existing.Email||'').toLowerCase():'';
+  if(email){
+    const scope=role==='EMPLOYEE'?'SELF':role==='MANAGER'?'DEPARTMENT':'COMPANY',canAssign=role==='MANAGER'||role==='EXECUTIVE'||role==='BOARD'||role==='ADMIN',canClose=role==='EXECUTIVE'||role==='BOARD'||role==='ADMIN';
+    upsertByKey_(SHEETS.permissions,'EMPLOYEE_ID',id,{USER_ID:'U-'+id,Email:email,EMPLOYEE_ID:id,ROLE:role,SCOPE:scope,DEPARTMENT_ID:depId,'Có quyền giao KPI':canAssign,'Có quyền chốt KPI':canClose,'Trạng thái':status});
+    if(oldEmail&&oldEmail!==email){revokeSessions_(oldEmail);const ash=ss_().getSheetByName(SHEETS.accounts),av=ash.getDataRange().getValues(),ah=av[0].map(String),ec=ah.indexOf('EMAIL');for(let i=1;i<av.length;i++)if(String(av[i][ec]).toLowerCase()===oldEmail){ash.getRange(i+1,ec+1).setValue(email);break;}}
+  }
+  log_(actor.USER_ID,'ADMIN_UPSERT_EMPLOYEE',SHEETS.employees,id,'',JSON.stringify({email:email,departmentId:depId,title:title,role:role,status:status}));return {ok:true,employeeId:id,email:email};
+}
+function upsertByKey_(sheetName,key,keyValue,obj){const sh=ss_().getSheetByName(sheetName),v=sh.getDataRange().getValues(),h=v[0].map(String),kc=h.indexOf(key);if(kc<0)throw new Error('KEY_COLUMN_NOT_FOUND');let row=0;for(let i=1;i<v.length;i++)if(String(v[i][kc])===String(keyValue)){row=i+1;break;}if(!row){sh.appendRow(h.map(x=>obj[x]===undefined?'':obj[x]));return;}h.forEach((x,j)=>{if(obj[x]!==undefined)sh.getRange(row,j+1).setValue(obj[x])});}
 function revokeSessions_(email){const sh=ss_().getSheetByName(SHEETS.sessions),v=sh.getDataRange().getValues();if(v.length<2)return;const h=v[0].map(String),ec=h.indexOf('EMAIL'),rc=h.indexOf('REVOKED');for(let i=1;i<v.length;i++)if(String(v[i][ec]).toLowerCase()===String(email).toLowerCase()&&rc>=0)sh.getRange(i+1,rc+1).setValue(true);}
 function bootstrap_(email) {
   const user = resolveUser_(email);
