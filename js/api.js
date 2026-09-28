@@ -2,7 +2,7 @@ const API={
   base:'https://script.google.com/macros/s/AKfycbyc1mapNPgjhAHiQrKO_iAjbj7JJnc8VfaDJvxkGeD0G8GdiBdhXyfj-ZSQtFGnOEbJ/exec',
   token:localStorage.getItem('kpiToken')||'',
   setToken(token){this.token=token||'';if(this.token)localStorage.setItem('kpiToken',this.token);else localStorage.removeItem('kpiToken')},
-  async login(email,password){const r=await fetch(this.base,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'login',data:{email,password}})});const j=await r.json();if(!j.ok)throw new Error(j.error||'Đăng nhập thất bại');this.setToken(j.token);return j},
+  async login(email,password){const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),15000);try{const r=await fetch(this.base,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify({action:'login',data:{email,password}}),signal:ctl.signal});if(!r.ok)throw new Error('Máy chủ đăng nhập phản hồi lỗi '+r.status);let j;try{j=await r.json()}catch(e){throw new Error('Phản hồi đăng nhập không hợp lệ')};if(!j.ok)throw new Error(j.error||'Email hoặc mật khẩu không đúng');if(!j.token)throw new Error('Máy chủ không trả về phiên đăng nhập');this.setToken(j.token);return j}catch(e){if(e.name==='AbortError')throw new Error('Máy chủ đăng nhập không phản hồi sau 15 giây');if(e instanceof TypeError)throw new Error('Không kết nối được máy chủ đăng nhập. Kiểm tra API/CORS.');throw e}finally{clearTimeout(timer)}},
   async logout(){try{if(this.token)await this.post('logout',{})}catch(e){}this.setToken('')},
   async get(action,params={}){
     const u=new URL(this.base);
