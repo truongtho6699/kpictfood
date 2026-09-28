@@ -1,4 +1,4 @@
-const APPS_SCRIPT='https://script.google.com/macros/s/AKfycbyc1mapNPgjhAHiQrKO_iAjbj7JJnc8VfaDJvxkGeD0G8GdiBdhXyfj-ZSQtFGnOEbJ/exec';
+const APPS_SCRIPT='https://script.google.com/macros/s/AKfycbyFAMX-099FY3Fo5EYY5nEhG3yBU_Sn8izsfxAHuGaVM_iDKQuhZtFSCqUzNcc9_BSj/exec';
 export default {
   async fetch(request, env) {
     const url=new URL(request.url);
