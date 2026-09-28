@@ -27,6 +27,7 @@ function doPost(e) {
     const email = authenticate_(payload.token || '');
     if (action === 'createSale') return json_(createSale_(email, payload.data || {}));
     if (action === 'createAssignment') return json_(createAssignment_(email, payload.data || {}));
+    if (action === 'createPositionAssignments') return json_(createPositionAssignments_(email, payload.data || {}));
     if (action === 'confirmSale') return json_(confirmSale_(email, payload.data || {}));
     if (action === 'recordPerformance') return json_(recordPerformance_(email, payload.data || {}));
     if (action === 'confirmPerformance') return json_(confirmPerformance_(email, payload.data || {}));
@@ -233,6 +234,22 @@ function createAssignment_(email, data) {
   });
   log_(user.USER_ID, 'CREATE_ASSIGNMENT', 'GIAO_CHI_TIEU', id, '', JSON.stringify(data));
   return {ok:true,assignmentId:id};
+}
+
+function createPositionAssignments_(email,data){
+  const user=resolveUser_(email);if(!user)throw new Error('USER_NOT_AUTHORIZED');
+  const canAssign=user['Có quyền giao KPI']===true||String(user['Có quyền giao KPI']).toUpperCase()==='TRUE';if(!canAssign)throw new Error('NO_ASSIGN_PERMISSION');
+  const period=String(data.period||getConfig_('CURRENT_PERIOD','2026-09')),assignee=readObjects_(SHEETS.employees).find(r=>String(r.EMPLOYEE_ID)===String(data.assigneeId));
+  if(!assignee||!scopeEmployee_(user,assignee))throw new Error('ASSIGNEE_OUT_OF_SCOPE');
+  const rows=readObjects_(SHEETS.roleKpis).filter(r=>positionMatch_(assignee,r['Đơn vị/Vị trí'])&&String(r['Trạng thái']||'').toUpperCase()==='ACTIVE');
+  if(!rows.length)throw new Error('POSITION_KPI_NOT_CONFIGURED');
+  const total=rows.reduce((s,r)=>s+Number(r['Trọng số mặc định %']||0),0);if(Math.abs(total-100)>.001)throw new Error('POSITION_KPI_WEIGHT_NOT_100');
+  const bad=rows.filter(r=>r['Target mặc định']===''||r['Target mặc định']===null||r['Target mặc định']===undefined||r['Trọng số mặc định %']===''||r['Trọng số mặc định %']===null||r['Trọng số mặc định %']===undefined);
+  if(bad.length)throw new Error('POSITION_KPI_INCOMPLETE:'+bad.map(r=>r['Mã KPI']).join(','));
+  const existing=readObjects_(SHEETS.assignments).filter(r=>String(r.PERIOD_ID)===period&&String(r.ASSIGNEE_ID)===String(assignee.EMPLOYEE_ID));
+  const created=[],skipped=[];
+  rows.forEach(r=>{const code=String(r['Mã KPI']);if(existing.some(x=>String(x['Mã KPI'])===code)){skipped.push(code);return;}const out=createAssignment_(email,{period:period,assigneeId:assignee.EMPLOYEE_ID,assigneeName:assignee['Họ tên'],assigneeLevel:'NHAN_VIEN',departmentId:assignee.DEPARTMENT_ID,departmentName:assignee['Phòng ban'],kpiCode:code,source:'KPI_THEO_VI_TRI',allocationRule:data.allocationRule||'SUM_EXACT',dataConfirmer:data.dataConfirmer||'',approver:data.approver||'',startDate:data.startDate||today_(),endDate:data.endDate||'',note:data.note||'Tự động giao theo chức danh'});created.push({code:code,id:out.assignmentId});});
+  log_(user.USER_ID,'CREATE_POSITION_ASSIGNMENTS',SHEETS.assignments,assignee.EMPLOYEE_ID,'',JSON.stringify({period:period,created:created.map(x=>x.code),skipped:skipped}));return {ok:true,created:created,skipped:skipped,totalWeight:total};
 }
 
 function resolveUser_(email) {
