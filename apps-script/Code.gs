@@ -105,7 +105,8 @@ function dashboard_(email, period) {
   const assignments = readObjects_(SHEETS.assignments).filter(r => (!period || String(r.PERIOD_ID) === String(period)) && scopeAssignment_(user, r, employees));
   const sales = readObjects_(SHEETS.sales).filter(r => (!period || String(r.PERIOD_ID) === String(period)) && scopeSale_(user, r, employees));
   const performance = readObjects_(SHEETS.performance).filter(r => (!period || String(r.PERIOD_ID) === String(period)) && scopePerformance_(user,r,employees));
-  return {ok:true,user,period,employees,results,assignments,sales,performance};
+  const allocations = readObjects_(SHEETS.allocations).filter(r => (!period || String(r.PERIOD_ID) === String(period)) && (user.SCOPE==='COMPANY' || employees.some(e=>String(e.EMPLOYEE_ID)===String(r.EMPLOYEE_ID))));
+  return {ok:true,user,period,employees,results,assignments,sales,performance,allocations};
 }
 
 function createSale_(email, data) {
