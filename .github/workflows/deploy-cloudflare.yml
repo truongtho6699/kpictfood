@@ -45,7 +45,13 @@ jobs:
           HEALTH=$(curl -fsS --retry 5 --retry-delay 2 https://kpictfood.truongtho53.workers.dev/health)
           echo "Health: $HEALTH"
           echo "$HEALTH" | grep -q '"ok":true'
-          API=$(curl -sS --retry 5 --retry-delay 2 -w '\\nHTTP_STATUS:%{http_code}' 'https://kpictfood.truongtho53.workers.dev/api?action=masterData')
+          API=$(curl -sS --retry 5 --retry-delay 2 -w  'https://kpictfood.truongtho53.workers.dev/api?action=masterData')
+          echo "API response: $API"
+          STATUS=$(printf '%s' "$API" | sed -n 's/^HTTP_STATUS://p')
+          BODY=$(printf '%s' "$API" | sed '/^HTTP_STATUS:/d')
+          test "$STATUS" = "200"
+          echo "$BODY" | grep -q '"error":"AUTH_REQUIRED"'
+\nHTTP_STATUS:%{http_code}' 'https://kpictfood.truongtho53.workers.dev/api?action=masterData')
           echo "API response: $API"
           STATUS=$(printf '%s' "$API" | sed -n 's/^HTTP_STATUS://p')
           BODY=$(printf '%s' "$API" | sed '/^HTTP_STATUS:/d')
