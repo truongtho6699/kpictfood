@@ -1,0 +1,43 @@
+name: Deploy Apps Script Source
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps-script/**"
+      - ".github/workflows/deploy-apps-script.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps-script
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install clasp
+        run: npm install --global @google/clasp
+      - name: Configure clasp
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_JSON: ${{ secrets.CLASP_JSON }}
+        run: |
+          test -n "$CLASPRC_JSON" || (echo "Missing CLASPRC_JSON secret" && exit 1)
+          test -n "$CLASP_JSON" || (echo "Missing CLASP_JSON secret" && exit 1)
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+          printf '%s' "$CLASP_JSON" > .clasp.json
+      - name: Push source to Apps Script
+        run: clasp push --force
+      - name: Create Apps Script version
+        run: clasp version "GitHub ${GITHUB_SHA::7}"
+      - name: Show Apps Script deployments
+        run: clasp deployments
