@@ -31,6 +31,9 @@ function doPost(e) {
     if (action === 'confirmSale') return json_(confirmSale_(email, payload.data || {}));
     if (action === 'recordPerformance') return json_(recordPerformance_(email, payload.data || {}));
     if (action === 'confirmPerformance') return json_(confirmPerformance_(email, payload.data || {}));
+    if (action === 'acceptAssignment') return json_(acceptAssignment_(email, payload.data || {}));
+    if (action === 'allocateAssignment') return json_(allocateAssignment_(email, payload.data || {}));
+    if (action === 'closeAssignment') return json_(closeAssignment_(email, payload.data || {}));
     if (action === 'adminSetPassword') return json_(adminSetPassword_(email, payload.data || {}));
     if (action === 'adminUpsertEmployee') return json_(adminUpsertEmployee_(email, payload.data || {}));
     return json_({ok:false,error:'UNKNOWN_ACTION'});
@@ -311,6 +314,35 @@ function log_(uid, action, objectName, objectId, before, after) {
 function today_() { return Utilities.formatDate(new Date(), 'Asia/Ho_Chi_Minh', 'yyyy-MM-dd'); }
 function json_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 
+function acceptAssignment_(email,data){
+  const user=resolveUser_(email);if(!user)throw new Error('USER_NOT_AUTHORIZED');
+  const a=readObjects_(SHEETS.assignments).find(r=>String(r.ASSIGNMENT_ID)===String(data.assignmentId));if(!a)throw new Error('ASSIGNMENT_NOT_FOUND');
+  if(String(a.ASSIGNEE_ID)!==String(user.EMPLOYEE_ID))throw new Error('OUT_OF_SCOPE');
+  const st=String(a['Trạng thái']||'');if(!['DA_GIAO','DA_NHAN'].includes(st))throw new Error('ASSIGNMENT_STATUS_INVALID');
+  setAssignmentStatus_(a.ASSIGNMENT_ID,'DA_NHAN');log_(user.USER_ID,'ACCEPT_ASSIGNMENT',SHEETS.assignments,a.ASSIGNMENT_ID,st,'DA_NHAN');return {ok:true,status:'DA_NHAN'};
+}
+function allocateAssignment_(email,data){
+  const user=resolveUser_(email);if(!user)throw new Error('USER_NOT_AUTHORIZED');
+  const parent=readObjects_(SHEETS.assignments).find(r=>String(r.ASSIGNMENT_ID)===String(data.parentAssignmentId));if(!parent)throw new Error('PARENT_ASSIGNMENT_NOT_FOUND');
+  if(String(parent.ASSIGNEE_ID)!==String(user.EMPLOYEE_ID)&&String(user.SCOPE)!=='COMPANY')throw new Error('OUT_OF_SCOPE');
+  const emp=readObjects_(SHEETS.employees).find(r=>String(r.EMPLOYEE_ID)===String(data.employeeId));if(!emp||!scopeEmployee_(user,emp))throw new Error('EMPLOYEE_OUT_OF_SCOPE');
+  const target=Number(data.target),weight=Number(data.weight===undefined?parent['Trọng số %']:data.weight);if(!Number.isFinite(target)||target<0)throw new Error('TARGET_INVALID');if(!Number.isFinite(weight)||weight<0)throw new Error('WEIGHT_INVALID');
+  const rule=String(parent['Quy tắc phân bổ']||getConfig_('DEFAULT_ALLOC_RULE','SUM_EXACT')).toUpperCase(),existing=readObjects_(SHEETS.allocations).filter(r=>String(r.PARENT_ASSIGNMENT_ID)===String(parent.ASSIGNMENT_ID)&&String(r.EMPLOYEE_ID)!==String(emp.EMPLOYEE_ID));
+  const sum=existing.reduce((s,r)=>s+Number(r['Target NV']||0),0)+target,parentTarget=Number(parent.Target||0);
+  if(rule==='SUM_EXACT'&&sum>parentTarget+1e-9)throw new Error('ALLOCATION_EXCEEDS_PARENT');
+  if(rule==='SUM_BELOW'&&sum>parentTarget+1e-9)throw new Error('ALLOCATION_MUST_NOT_EXCEED');
+  const status=(rule==='SUM_EXACT'&&Math.abs(sum-parentTarget)<=1e-9)||rule==='NO_VALIDATION'||rule==='SUM_EXCEED'||(rule==='SUM_BELOW'&&sum<=parentTarget)?'HOP_LE':'CHUA_DU';
+  const obj={PARENT_ASSIGNMENT_ID:parent.ASSIGNMENT_ID,PERIOD_ID:parent.PERIOD_ID,'Phòng ban':parent['Phòng ban'],'Mã KPI':parent['Mã KPI'],'Tên KPI':parent['Tên KPI'],'Target phòng':parentTarget,EMPLOYEE_ID:emp.EMPLOYEE_ID,'Nhân viên':emp['Họ tên'],'Target NV':target,'Trọng số %':weight,'Tổng đã phân':sum,'Còn lại':parentTarget-sum,'Kiểm tra':status,'Trạng thái':'DA_PHAN_BO'};
+  upsertComposite_(SHEETS.allocations,['PARENT_ASSIGNMENT_ID','EMPLOYEE_ID'],[parent.ASSIGNMENT_ID,emp.EMPLOYEE_ID],obj);
+  setAssignmentStatus_(parent.ASSIGNMENT_ID,'DA_PHAN_BO');log_(user.USER_ID,'ALLOCATE_ASSIGNMENT',SHEETS.allocations,parent.ASSIGNMENT_ID,'',JSON.stringify(obj));return {ok:true,status:'DA_PHAN_BO',sum:sum,remaining:parentTarget-sum,validation:status};
+}
+function closeAssignment_(email,data){
+  const user=resolveUser_(email);if(!user)throw new Error('USER_NOT_AUTHORIZED');const canClose=user['Có quyền chốt KPI']===true||String(user['Có quyền chốt KPI']).toUpperCase()==='TRUE';if(!canClose)throw new Error('NO_CLOSE_PERMISSION');
+  const a=readObjects_(SHEETS.assignments).find(r=>String(r.ASSIGNMENT_ID)===String(data.assignmentId));if(!a||!scopeAssignment_(user,a))throw new Error('ASSIGNMENT_NOT_FOUND_OR_SCOPE');
+  const res=readObjects_(SHEETS.results).find(r=>String(r.ASSIGNMENT_ID)===String(a.ASSIGNMENT_ID));if(!res)throw new Error('RESULT_NOT_FOUND');if(String(res['Trạng thái dữ liệu'])!=='DA_XAC_NHAN')throw new Error('RESULT_NOT_CONFIRMED');
+  setAssignmentStatus_(a.ASSIGNMENT_ID,'DA_CHOT');upsertByKey_(SHEETS.results,'ASSIGNMENT_ID',a.ASSIGNMENT_ID,{'Trạng thái chốt':'DA_CHOT'});log_(user.USER_ID,'CLOSE_ASSIGNMENT',SHEETS.assignments,a.ASSIGNMENT_ID,a['Trạng thái'],'DA_CHOT');return {ok:true,status:'DA_CHOT'};
+}
+function upsertComposite_(sheetName,keys,vals,obj){const sh=ss_().getSheetByName(sheetName),v=sh.getDataRange().getValues(),h=v[0].map(String),idx=keys.map(k=>h.indexOf(k));let row=0;for(let i=1;i<v.length;i++)if(idx.every((x,j)=>String(v[i][x])===String(vals[j]))){row=i+1;break;}if(!row){sh.appendRow(h.map(x=>obj[x]===undefined?'':obj[x]));return;}h.forEach((x,j)=>{if(obj[x]!==undefined)sh.getRange(row,j+1).setValue(obj[x])});}
 function recordPerformance_(email, data) {
   const user = resolveUser_(email);
   if (!user) throw new Error('USER_NOT_AUTHORIZED');
