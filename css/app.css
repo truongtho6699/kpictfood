@@ -12,3 +12,5 @@ html{font-size:15px}body{font-family:Arial,"Segoe UI",Roboto,"Noto Sans",sans-se
 @media(min-width:901px){.cards{grid-template-columns:repeat(4,minmax(170px,1fr))}.card{min-width:0}main{overflow-x:hidden}}
 
 .table-wrap{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch}.table-wrap table{min-width:640px}@media(max-width:900px){.app{display:block}.sidebar{position:relative;width:100%;min-height:auto}.sidebar nav{display:grid;grid-template-columns:repeat(3,1fr)}main{padding:20px}.cards{grid-template-columns:repeat(2,minmax(0,1fr))}.section-title{align-items:flex-start;flex-direction:column}.filters{width:100%}.filters select{flex:1;min-width:0}}@media(max-width:520px){.cards{grid-template-columns:1fr}.sidebar nav{grid-template-columns:repeat(2,1fr)}main{padding:14px}.metric{font-size:24px}h1{font-size:26px}}
+
+.danger-btn{background:#fff;color:#C2410C;border:1px solid #C2410C}.danger-btn:hover{background:#fff7ed}
