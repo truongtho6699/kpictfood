@@ -39,3 +39,12 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Verify production health and API routing
+        run: |
+          set -e
+          HEALTH=$(curl -fsS --retry 5 --retry-delay 2 https://kpictfood.truongtho53.workers.dev/health)
+          echo "Health: $HEALTH"
+          echo "$HEALTH" | grep -q '"ok":true'
+          API=$(curl -fsS --retry 5 --retry-delay 2 'https://kpictfood.truongtho53.workers.dev/api?action=masterData')
+          echo "API: $API"
+          echo "$API" | grep -q '"error":"AUTH_REQUIRED"'
