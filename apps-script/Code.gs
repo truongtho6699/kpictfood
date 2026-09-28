@@ -36,6 +36,9 @@ function doPost(e) {
     if (action === 'closeAssignment') return json_(closeAssignment_(email, payload.data || {}));
     if (action === 'adminSetPassword') return json_(adminSetPassword_(email, payload.data || {}));
     if (action === 'adminUpsertEmployee') return json_(adminUpsertEmployee_(email, payload.data || {}));
+    if (action === 'adminUpsert3P') return json_(adminUpsert3P_(email, payload.data || {}));
+    if (action === 'adminUpsertPayroll') return json_(adminUpsertPayroll_(email, payload.data || {}));
+    if (action === 'adminClosePayrollPeriod') return json_(adminClosePayrollPeriod_(email, payload.data || {}));
     return json_({ok:false,error:'UNKNOWN_ACTION'});
   } catch (err) {
     return json_({ok:false,error:String(err.message || err)});
@@ -71,6 +74,10 @@ function adminSetPassword_(actorEmail,data){
   if(!found)appendRowByHeaders_(SHEETS.accounts,{EMAIL:email,PASSWORD_HASH:hash,SALT:salt,STATUS:'ACTIVE',FAILED_ATTEMPTS:0,LOCK_UNTIL:'',LAST_LOGIN:'',PASSWORD_UPDATED_AT:new Date()});
   revokeSessions_(email);log_(actor.USER_ID,'ADMIN_SET_PASSWORD',SHEETS.accounts,email,'','PASSWORD_RESET');return {ok:true,email};
 }
+function requireAdmin_(email){const u=resolveUser_(email);if(!u||!['EXECUTIVE','BOARD','ADMIN'].includes(String(u.ROLE)))throw new Error('NO_ADMIN_PERMISSION');return u;}
+function adminUpsert3P_(email,data){const u=requireAdmin_(email),id=String(data.configId||('3P-'+Utilities.getUuid().slice(0,8))).trim(),p1=Number(data.p1),p2=Number(data.p2),p3=Number(data.p3);if([p1,p2,p3].some(x=>!Number.isFinite(x)||x<0))throw new Error('PERCENT_INVALID');if(Math.abs(p1+p2+p3-1)>.0001)throw new Error('PERCENT_TOTAL_NOT_100');const obj={CONFIG_ID:id,'Phạm vi':String(data.scope||'DEFAULT'),'Đối tượng':String(data.subject||'Tất cả'),'Tỷ lệ 1P':p1,'Tỷ lệ 2P':p2,'Tỷ lệ 3P':p3,'Quy tắc 1P':String(data.rule1||''),'Quy tắc 2P':String(data.rule2||''),'Quy tắc 3P':String(data.rule3||''),'Hiệu lực từ':String(data.effectiveFrom||today_()),'Trạng thái':String(data.status||'ACTIVE')};upsertByKey_(SHEETS.incomeConfig,'CONFIG_ID',id,obj);log_(u.USER_ID,'ADMIN_UPSERT_3P',SHEETS.incomeConfig,id,'',JSON.stringify(obj));return {ok:true,configId:id};}
+function adminUpsertPayroll_(email,data){const u=requireAdmin_(email),period=String(data.period||getConfig_('CURRENT_PERIOD','2026-09')),empId=String(data.employeeId||''),emp=readObjects_(SHEETS.employees).find(x=>String(x.EMPLOYEE_ID)===empId);if(!emp)throw new Error('EMPLOYEE_NOT_FOUND');const current=readObjects_(SHEETS.payroll).find(x=>String(x.PERIOD_ID)===period&&String(x.EMPLOYEE_ID)===empId);if(current&&String(current['Trạng thái'])==='DA_CHOT')throw new Error('PAYROLL_PERIOD_LOCKED');const target=Number(data.targetIncome);if(!Number.isFinite(target)||target<0)throw new Error('TARGET_INCOME_INVALID');const obj={PERIOD_ID:period,EMPLOYEE_ID:empId,'Nhân viên':emp['Họ tên'],'Lương KPI mục tiêu':target,'1P dự tính':Number(data.p1Amount||0),'2P dự tính':Number(data.p2Amount||0),'3P dự tính':Number(data.p3Amount||0),'Tổng dự tính':Number(data.totalAmount||0),'Trạng thái':'NHAP','Ngày chốt':'','Ghi chú':String(data.note||'')};upsertComposite_(SHEETS.payroll,['PERIOD_ID','EMPLOYEE_ID'],[period,empId],obj);log_(u.USER_ID,'ADMIN_UPSERT_PAYROLL',SHEETS.payroll,period+'|'+empId,'',JSON.stringify(obj));return {ok:true};}
+function adminClosePayrollPeriod_(email,data){const u=requireAdmin_(email),period=String(data.period||getConfig_('CURRENT_PERIOD','2026-09')),sh=ss_().getSheetByName(SHEETS.payroll),v=sh.getDataRange().getValues(),h=v[0].map(String),pc=h.indexOf('PERIOD_ID'),sc=h.indexOf('Trạng thái'),dc=h.indexOf('Ngày chốt');let n=0;for(let i=1;i<v.length;i++)if(String(v[i][pc])===period){sh.getRange(i+1,sc+1).setValue('DA_CHOT');if(dc>=0)sh.getRange(i+1,dc+1).setValue(new Date());n++;}log_(u.USER_ID,'ADMIN_CLOSE_PAYROLL_PERIOD',SHEETS.payroll,period,'',String(n));return {ok:true,closed:n};}
 function adminUpsertEmployee_(actorEmail,data){
   const actor=resolveUser_(actorEmail);if(!actor||!['EXECUTIVE','BOARD','ADMIN'].includes(String(actor.ROLE)))throw new Error('NO_ADMIN_PERMISSION');
   const id=String(data.employeeId||'').trim(),name=String(data.name||'').trim(),email=String(data.email||'').trim().toLowerCase(),depId=String(data.departmentId||'').trim(),title=String(data.title||'').trim(),managerId=String(data.managerId||'').trim(),role=String(data.role||'EMPLOYEE').trim().toUpperCase(),status=String(data.status||'ACTIVE').trim().toUpperCase();
@@ -156,8 +163,9 @@ function masterData_(email) {
   const period = getConfig_('CURRENT_PERIOD', '2026-09');
   const configs = readObjects_(SHEETS.incomeConfig).filter(r => String(r['Trạng thái']||'').toUpperCase()==='ACTIVE');
   const incomeConfig = configs.find(r => String(r['Phạm vi'])==='EMPLOYEE' && String(r['Đối tượng'])===String(user.EMPLOYEE_ID)) || configs.find(r => String(r['Phạm vi'])==='DEFAULT') || null;
-  const payroll = readObjects_(SHEETS.payroll).find(r => String(r.PERIOD_ID)===String(period) && String(r.EMPLOYEE_ID)===String(user.EMPLOYEE_ID)) || null;
-  return {ok:true,user,employees,departments,kpis,roleKpis,positions,permissions,incomeConfig,payroll};
+  const allPayroll = readObjects_(SHEETS.payroll), payroll = allPayroll.find(r => String(r.PERIOD_ID)===String(period) && String(r.EMPLOYEE_ID)===String(user.EMPLOYEE_ID)) || null;
+  const adminData=['ADMIN','BOARD','EXECUTIVE'].includes(String(user.ROLE));
+  return {ok:true,user,employees,departments,kpis,roleKpis,positions,permissions,incomeConfig,payroll,incomeConfigs:adminData?configs:[],payrollRows:adminData?allPayroll:[]};
 }
 
 function confirmSale_(email, data) {
