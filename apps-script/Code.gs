@@ -346,6 +346,8 @@ function allocateAssignment_(email,data){
   const user=resolveUser_(email);if(!user)throw new Error('USER_NOT_AUTHORIZED');
   const parent=readObjects_(SHEETS.assignments).find(r=>String(r.ASSIGNMENT_ID)===String(data.parentAssignmentId));if(!parent)throw new Error('PARENT_ASSIGNMENT_NOT_FOUND');
   if(String(parent.ASSIGNEE_ID)!==String(user.EMPLOYEE_ID)&&String(user.SCOPE)!=='COMPANY')throw new Error('OUT_OF_SCOPE');
+  if(String(parent['Trạng thái'])==='DA_CHOT')throw new Error('PARENT_ASSIGNMENT_CLOSED');
+  if(parent.Target===''||parent.Target===null||parent.Target===undefined)throw new Error('PARENT_TARGET_PENDING');
   const emp=readObjects_(SHEETS.employees).find(r=>String(r.EMPLOYEE_ID)===String(data.employeeId));if(!emp||!scopeEmployee_(user,emp))throw new Error('EMPLOYEE_OUT_OF_SCOPE');
   const target=Number(data.target),weight=Number(data.weight===undefined?parent['Trọng số %']:data.weight);if(!Number.isFinite(target)||target<0)throw new Error('TARGET_INVALID');if(!Number.isFinite(weight)||weight<0)throw new Error('WEIGHT_INVALID');
   const rule=String(parent['Quy tắc phân bổ']||getConfig_('DEFAULT_ALLOC_RULE','SUM_EXACT')).toUpperCase(),existing=readObjects_(SHEETS.allocations).filter(r=>String(r.PARENT_ASSIGNMENT_ID)===String(parent.ASSIGNMENT_ID)&&String(r.EMPLOYEE_ID)!==String(emp.EMPLOYEE_ID));
