@@ -6,18 +6,18 @@ const SHEETS = {
 };
 
 function doGet(e) {
+  // Simple native Apps Script UI. No Cloudflare/API proxy is required.
+  if (!e || !e.parameter || !e.parameter.action) return doGetSimple();
+  // Keep legacy JSON reads temporarily for migration/testing.
   try {
-    const action = (e.parameter.action || 'bootstrap').trim();
-    const email = authenticate_(e.parameter.token || '');
-    if (action === 'bootstrap') return json_(bootstrap_(email));
-    if (action === 'dashboard') return json_(dashboard_(email, e.parameter.period || getConfig_('CURRENT_PERIOD', '2026-09')));
-    if (action === 'masterData') return json_(masterData_(email));
+    const action=(e.parameter.action||'').trim();
+    const email=authenticate_(e.parameter.token||'');
+    if(action==='bootstrap')return json_(bootstrap_(email));
+    if(action==='dashboard')return json_(dashboard_(email,e.parameter.period||getConfig_('CURRENT_PERIOD','2026-09')));
+    if(action==='masterData')return json_(masterData_(email));
     return json_({ok:false,error:'UNKNOWN_ACTION'});
-  } catch (err) {
-    return json_({ok:false,error:String(err.message || err)});
-  }
+  } catch(err){return json_({ok:false,error:String(err.message||err)})}
 }
-
 function doPost(e) {
   try {
     const payload = JSON.parse((e.postData && e.postData.contents) || '{}');
