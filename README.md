@@ -11,3 +11,11 @@ Database dùng Google Sheet KPI_CTFOOD, spreadsheet ID `1z2vVKOAuIiDvYXzIcY4nl-v
 Các tab chính: NHAN_VIEN, PHONG_BAN, DANH_MUC_KPI, KPI_THEO_VI_TRI, GIAO_CHI_TIEU, PHAN_BO_KPI, DOANH_SO_NV, KET_QUA_KPI, DIEU_CHINH_KPI, PHAN_QUYEN, NHAT_KY_HE_THONG, CAU_HINH.
 
 Frontend mẫu sẽ chạy trên GitHub Pages/Cloudflare Pages. Backend dự kiến dùng Google Apps Script Web App để đọc/ghi Google Sheet và kiểm soát quyền theo ROLE + SCOPE + DEPARTMENT_ID + EMPLOYEE_ID.
+
+## Apps Script Web App (production)
+
+Giao diện KPI đơn giản chạy trực tiếp từ Google Apps Script và Google Sheets:
+
+https://script.google.com/macros/s/AKfycbxCIdWUZGnSYlAQ0DwhVIubby6sRijIZOACe-OMpM85bPEoWBdCNwEiW55wu0Vllg/exec
+
+Kiến trúc chính: Apps Script HTML Service → google.script.run → Google Sheets. Cloudflare/API cũ chỉ còn phục vụ mục đích chuyển tiếp/di trú và không phải đường chạy chính của bản đơn giản.
