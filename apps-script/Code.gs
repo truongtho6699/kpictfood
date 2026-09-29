@@ -167,7 +167,8 @@ function masterData_(email) {
   const incomeConfig = configs.find(r => String(r['Phạm vi'])==='EMPLOYEE' && String(r['Đối tượng'])===String(user.EMPLOYEE_ID)) || configs.find(r => String(r['Phạm vi'])==='DEFAULT') || null;
   const allPayroll = readObjects_(SHEETS.payroll), payroll = allPayroll.find(r => String(r.PERIOD_ID)===String(period) && String(r.EMPLOYEE_ID)===String(user.EMPLOYEE_ID)) || null;
   const adminData=['ADMIN','BOARD','EXECUTIVE'].includes(String(user.ROLE));
-  return {ok:true,user,employees,departments,kpis,roleKpis,positions,permissions,incomeConfig,payroll,incomeConfigs:adminData?configs:[],payrollRows:adminData?allPayroll:[],logs:adminData?readObjects_(SHEETS.logs).slice(-200).reverse():[],config:configObject_()};
+  const allocations=readObjects_(SHEETS.allocations).filter(r=>{const emp=readObjects_(SHEETS.employees).find(e=>String(e.EMPLOYEE_ID)===String(r.EMPLOYEE_ID));return emp&&scopeEmployee_(user,emp)});
+  return {ok:true,user,employees,departments,kpis,roleKpis,positions,permissions,incomeConfig,payroll,incomeConfigs:adminData?configs:[],payrollRows:adminData?allPayroll:[],allocations,logs:adminData?readObjects_(SHEETS.logs).slice(-200).reverse():[],config:configObject_()};
 }
 
 function confirmSale_(email, data) {
