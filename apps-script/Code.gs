@@ -2,7 +2,7 @@ const SPREADSHEET_ID = '1z2vVKOAuIiDvYXzIcY4nl-vARVaTb_PC-EsWN294NeM';
 const SHEETS = {
   employees:'NHAN_VIEN', departments:'PHONG_BAN', kpis:'DANH_MUC_KPI', roleKpis:'KPI_THEO_VI_TRI',
   assignments:'GIAO_CHI_TIEU', allocations:'PHAN_BO_KPI', sales:'DOANH_SO_NV', results:'KET_QUA_KPI',
-  changes:'DIEU_CHINH_KPI', permissions:'PHAN_QUYEN', logs:'NHAT_KY_HE_THONG', config:'CAU_HINH', incomeConfig:'CAU_HINH_3P', payroll:'BANG_LUONG', performance:'THUC_HIEN_KPI', accounts:'TAI_KHOAN', sessions:'PHIEN_DANG_NHAP'
+  changes:'DIEU_CHINH_KPI', permissions:'PHAN_QUYEN', logs:'NHAT_KY_HE_THONG', config:'CAU_HINH', incomeConfig:'CAU_HINH_3P', payroll:'BANG_LUONG', performance:'THUC_HIEN_KPI', accounts:'TAI_KHOAN', sessions:'PHIEN_DANG_NHAP', conflicts:'DOI_SOAT_DU_LIEU'
 };
 
 function doGet(e) {
@@ -43,6 +43,7 @@ function doPost(e) {
     if (action === 'adminSetCurrentPeriod') return json_(adminSetCurrentPeriod_(email, payload.data || {}));
     if (action === 'adminUpsertKpi') return json_(adminUpsertKpi_(email, payload.data || {}));
     if (action === 'adminUpsertRoleKpi') return json_(adminUpsertRoleKpi_(email, payload.data || {}));
+    if (action === 'adminResolveConflict') return json_(adminResolveConflict_(email, payload.data || {}));
     return json_({ok:false,error:'UNKNOWN_ACTION'});
   } catch (err) {
     return json_({ok:false,error:String(err.message || err)});
@@ -79,6 +80,7 @@ function adminSetPassword_(actorEmail,data){
   revokeSessions_(email);log_(actor.USER_ID,'ADMIN_SET_PASSWORD',SHEETS.accounts,email,'','PASSWORD_RESET');return {ok:true,email};
 }
 function requireAdmin_(email){const u=resolveUser_(email);if(!u||!['EXECUTIVE','BOARD','ADMIN'].includes(String(u.ROLE)))throw new Error('NO_ADMIN_PERMISSION');return u;}
+function adminResolveConflict_(email,data){const u=requireAdmin_(email),id=String(data.issueId||'').trim(),decision=String(data.decision||'').trim(),status=String(data.status||'DA_XU_LY').trim();if(!id||!decision)throw new Error('CONFLICT_DECISION_REQUIRED');const sh=ss_().getSheetByName(SHEETS.conflicts),v=sh.getDataRange().getValues(),h=v[0].map(String),ic=h.indexOf('ISSUE_ID'),sc=h.indexOf('Trạng thái'),dc=h.indexOf('Quyết định'),gc=h.indexOf('Ghi chú');for(let i=1;i<v.length;i++)if(String(v[i][ic])===id){sh.getRange(i+1,sc+1).setValue(status);sh.getRange(i+1,dc+1).setValue(decision);if(gc>=0&&data.note)sh.getRange(i+1,gc+1).setValue(String(data.note));log_(u.USER_ID,'RESOLVE_DATA_CONFLICT',SHEETS.conflicts,id,'',JSON.stringify({decision,status}));return {ok:true,issueId:id,status};}throw new Error('CONFLICT_NOT_FOUND');}
 function adminUpsertKpi_(email,data){const u=requireAdmin_(email),code=String(data.code||'').trim();if(!code)throw new Error('KPI_CODE_REQUIRED');const obj={'Mã KPI':code,'Nhóm KPI':String(data.group||''),'Tên KPI':String(data.name||''),'Đơn vị':String(data.unit||''),'Chiều':String(data.direction||'Tăng'),'Target tham chiếu':data.targetReference===undefined?'':data.targetReference,'Nguồn dữ liệu':String(data.source||''),'Trạng thái Target':String(data.targetStatus||'ACTIVE')};if(!obj['Tên KPI'])throw new Error('KPI_NAME_REQUIRED');upsertByKey_(SHEETS.kpis,'Mã KPI',code,obj);log_(u.USER_ID,'ADMIN_UPSERT_KPI',SHEETS.kpis,code,'',JSON.stringify(obj));return {ok:true,code};}
 function adminUpsertRoleKpi_(email,data){const u=requireAdmin_(email),position=String(data.position||'').trim(),code=String(data.code||'').trim(),weight=Number(data.weight);if(!position||!code)throw new Error('POSITION_KPI_REQUIRED');if(!Number.isFinite(weight)||weight<0||weight>100)throw new Error('WEIGHT_INVALID');const kpi=readObjects_(SHEETS.kpis).find(x=>String(x['Mã KPI'])===code);if(!kpi)throw new Error('KPI_NOT_FOUND');const obj={'Đơn vị/Vị trí':position,'Mã KPI':code,'Tên KPI':kpi['Tên KPI'],'Trọng số mặc định %':weight,'Target mặc định':data.target===undefined?'':data.target,'Trạng thái':String(data.status||'ACTIVE')};upsertComposite_(SHEETS.roleKpis,['Đơn vị/Vị trí','Mã KPI'],[position,code],obj);const rows=readObjects_(SHEETS.roleKpis).filter(x=>String(x['Đơn vị/Vị trí'])===position&&String(x['Trạng thái']).toUpperCase()==='ACTIVE');const total=rows.reduce((s,x)=>s+Number(x['Trọng số mặc định %']||0),0);log_(u.USER_ID,'ADMIN_UPSERT_ROLE_KPI',SHEETS.roleKpis,position+'|'+code,'',JSON.stringify({weight,target:data.target,total}));return {ok:true,totalWeight:total,valid:Math.abs(total-100)<.001};}
 function adminUpsert3P_(email,data){const u=requireAdmin_(email),id=String(data.configId||('3P-'+Utilities.getUuid().slice(0,8))).trim(),p1=Number(data.p1),p2=Number(data.p2),p3=Number(data.p3);if([p1,p2,p3].some(x=>!Number.isFinite(x)||x<0))throw new Error('PERCENT_INVALID');if(Math.abs(p1+p2+p3-1)>.0001)throw new Error('PERCENT_TOTAL_NOT_100');const obj={CONFIG_ID:id,'Phạm vi':String(data.scope||'DEFAULT'),'Đối tượng':String(data.subject||'Tất cả'),'Tỷ lệ 1P':p1,'Tỷ lệ 2P':p2,'Tỷ lệ 3P':p3,'Quy tắc 1P':String(data.rule1||''),'Quy tắc 2P':String(data.rule2||''),'Quy tắc 3P':String(data.rule3||''),'Hiệu lực từ':String(data.effectiveFrom||today_()),'Trạng thái':String(data.status||'ACTIVE')};upsertByKey_(SHEETS.incomeConfig,'CONFIG_ID',id,obj);log_(u.USER_ID,'ADMIN_UPSERT_3P',SHEETS.incomeConfig,id,'',JSON.stringify(obj));return {ok:true,configId:id};}
@@ -173,8 +175,9 @@ function masterData_(email) {
   const incomeConfig = configs.find(r => String(r['Phạm vi'])==='EMPLOYEE' && String(r['Đối tượng'])===String(user.EMPLOYEE_ID)) || configs.find(r => String(r['Phạm vi'])==='DEFAULT') || null;
   const allPayroll = readObjects_(SHEETS.payroll), payroll = allPayroll.find(r => String(r.PERIOD_ID)===String(period) && String(r.EMPLOYEE_ID)===String(user.EMPLOYEE_ID)) || null;
   const adminData=['ADMIN','BOARD','EXECUTIVE'].includes(String(user.ROLE));
+  const conflicts=adminData?readObjects_(SHEETS.conflicts):[];
   const allocations=readObjects_(SHEETS.allocations).filter(r=>{const emp=readObjects_(SHEETS.employees).find(e=>String(e.EMPLOYEE_ID)===String(r.EMPLOYEE_ID));return emp&&scopeEmployee_(user,emp)});
-  return {ok:true,user,employees,departments,kpis,roleKpis,positions,permissions,incomeConfig,payroll,incomeConfigs:adminData?configs:[],payrollRows:adminData?allPayroll:[],allocations,logs:adminData?readObjects_(SHEETS.logs).slice(-200).reverse():[],config:configObject_()};
+  return {ok:true,user,employees,departments,kpis,roleKpis,positions,permissions,incomeConfig,payroll,incomeConfigs:adminData?configs:[],payrollRows:adminData?allPayroll:[],allocations,conflicts,logs:adminData?readObjects_(SHEETS.logs).slice(-200).reverse():[],config:configObject_()};
 }
 
 function confirmSale_(email, data) {
