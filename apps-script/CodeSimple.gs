@@ -43,6 +43,22 @@ function simpleSaveSalary3P(d){
  if(found){const sh=sss_().getSheetByName(ST.PAY),v=sh.getDataRange().getValues(),h=v[0].map(String),pi=h.indexOf('PERIOD_ID'),ei=h.indexOf('EMPLOYEE_ID');for(let i=1;i<v.length;i++)if(sper_(v[i][pi])===p&&String(v[i][ei])===String(e.EMPLOYEE_ID)){Object.keys(data).forEach(k=>{const j=h.indexOf(k);if(j>=0)sh.getRange(i+1,j+1).setValue(data[k])});break}}else sappend_(ST.PAY,data);return{ok:true}
 }
 
+function simpleAdminBootstrapAccounts(d){
+ const u=scurrentUser_(d.token);if(String(u['Vai trò hệ thống'])!=='ADMIN')throw Error('Chỉ Admin được khởi tạo tài khoản');
+ const emps=srows_(ST.EMP),sh=sss_().getSheetByName('TAI_KHOAN'),v=sh.getDataRange().getValues(),h=v[0].map(String);
+ const ec=h.indexOf('EMAIL'),hc=h.indexOf('PASSWORD_HASH'),sc=h.indexOf('SALT'),st=h.indexOf('STATUS'),fc=h.indexOf('FAILED_ATTEMPTS'),lc=h.indexOf('LOCK_UNTIL'),pc=h.indexOf('PASSWORD_UPDATED_AT');
+ let created=0,reset=0,skipped=0;
+ emps.forEach((e,i)=>{
+   let email=String(e.Email||'').trim().toLowerCase();
+   if(!email){email='nv'+String(e.EMPLOYEE_ID||i+1).toLowerCase().replace(/[^a-z0-9]/g,'')+'@ctfoods.vn';supdate_(ST.EMP,'EMPLOYEE_ID',e.EMPLOYEE_ID,{Email:email})}
+   const salt=Utilities.getUuid(),hash=hashPassword_('123456',salt),ri=v.findIndex((r,j)=>j>0&&String(r[ec]||'').trim().toLowerCase()===email);
+   if(ri>0){sh.getRange(ri+1,hc+1).setValue(hash);sh.getRange(ri+1,sc+1).setValue(salt);if(st>=0)sh.getRange(ri+1,st+1).setValue('ACTIVE');if(fc>=0)sh.getRange(ri+1,fc+1).setValue(0);if(lc>=0)sh.getRange(ri+1,lc+1).clearContent();if(pc>=0)sh.getRange(ri+1,pc+1).setValue(new Date());reset++}
+   else{sappend_('TAI_KHOAN',{EMAIL:email,PASSWORD_HASH:hash,SALT:salt,STATUS:'ACTIVE',FAILED_ATTEMPTS:0,LOCK_UNTIL:'',LAST_LOGIN:'',PASSWORD_UPDATED_AT:new Date()});created++}
+ });
+ return{ok:true,created:created,reset:reset,skipped:skipped}
+}
+function simpleAdminEmployeeList(d){const u=scurrentUser_(d.token);if(String(u['Vai trò hệ thống'])!=='ADMIN')throw Error('Chỉ Admin được xem');return sclient_(srows_(ST.EMP))}
+
 function simpleLogin(data){return login_(data||{})}
 function simplePayrollSave(d){const u=scurrentUser_(d.token);if(!['ADMIN','BOARD','EXECUTIVE'].includes(String(u['Vai trò hệ thống']||'')))throw Error('Không có quyền cập nhật lương');const e=srows_(ST.EMP).find(x=>String(x.EMPLOYEE_ID)===String(d.employeeId));if(!e)throw Error('Không tìm thấy nhân viên');const p=d.period||scurrentPeriod_(),key=p+'|'+e.EMPLOYEE_ID,rows=srows_(ST.PAY),found=rows.find(x=>sper_(x.PERIOD_ID)===p&&String(x.EMPLOYEE_ID)===String(e.EMPLOYEE_ID));const obj={PERIOD_ID:p,EMPLOYEE_ID:e.EMPLOYEE_ID,'Nhân viên':e['Họ tên'],'1P dự tính':Number(d.p1||0),'2P dự tính':Number(d.p2||0),'3P dự tính':Number(d.p3||0),'Tổng dự tính':Number(d.p1||0)+Number(d.p2||0)+Number(d.p3||0),'Trạng thái':'NHAP'};if(found)supsert_(ST.PAY,'EMPLOYEE_ID',e.EMPLOYEE_ID,obj);else sappend_(ST.PAY,obj);return{ok:true}}
 function simpleLogout(token){return logout_(token||'')}
