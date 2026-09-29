@@ -90,6 +90,11 @@ function simpleBulkAssignRoleKpis(d){
  let count=0;ks.forEach(k=>{try{simpleCreateAssignment({token:d.token,employeeId:emp.EMPLOYEE_ID,position:pos,kpiCode:k['Mã KPI'],target:''});count++}catch(e){if(!String(e.message||e).includes('đã được giao'))throw e}});return{ok:true,count:count}
 }
 
+function simpleEmployeeResultSummary(d){
+ const u=scurrentUser_(d.token),p=String(d.period||scurrentPeriod_()),es=srows_(ST.EMP).filter(e=>sscope_(u,e)),ids=new Set(es.map(e=>String(e.EMPLOYEE_ID))),as=srows_(ST.ASN).filter(a=>sper_(a.PERIOD_ID)===p&&ids.has(String(a.ASSIGNEE_ID))),rs=srows_(ST.RES).filter(r=>sper_(r.PERIOD_ID)===p&&ids.has(String(r.EMPLOYEE_ID)));
+ return sclient_(es.map(e=>{const ea=as.filter(a=>String(a.ASSIGNEE_ID)===String(e.EMPLOYEE_ID)),er=rs.filter(r=>String(r.EMPLOYEE_ID)===String(e.EMPLOYEE_ID)),done=er.filter(r=>r['% Hoàn thành']!==''&&r['% Hoàn thành']!=null);return{employeeId:e.EMPLOYEE_ID,name:e['Họ tên'],department:e['Phòng ban'],title:e['Chức danh'],score:er.reduce((s,x)=>s+Number(x['Điểm quy đổi']||0),0),completion:done.length?done.reduce((s,x)=>s+Number(x['% Hoàn thành']||0),0)/done.length:0,assigned:ea.length,closed:ea.filter(a=>String(a['Trạng thái'])==='DA_CHOT').length,attention:done.filter(r=>Number(r['% Hoàn thành'])<.85).length}}))
+}
+
 function simpleLogin(data){return login_(data||{})}
 function simplePayrollSave(d){const u=scurrentUser_(d.token);if(!['ADMIN','BOARD','EXECUTIVE'].includes(String(u['Vai trò hệ thống']||'')))throw Error('Không có quyền cập nhật lương');const e=srows_(ST.EMP).find(x=>String(x.EMPLOYEE_ID)===String(d.employeeId));if(!e)throw Error('Không tìm thấy nhân viên');const p=d.period||scurrentPeriod_(),key=p+'|'+e.EMPLOYEE_ID,rows=srows_(ST.PAY),found=rows.find(x=>sper_(x.PERIOD_ID)===p&&String(x.EMPLOYEE_ID)===String(e.EMPLOYEE_ID));const obj={PERIOD_ID:p,EMPLOYEE_ID:e.EMPLOYEE_ID,'Nhân viên':e['Họ tên'],'1P dự tính':Number(d.p1||0),'2P dự tính':Number(d.p2||0),'3P dự tính':Number(d.p3||0),'Tổng dự tính':Number(d.p1||0)+Number(d.p2||0)+Number(d.p3||0),'Trạng thái':'NHAP'};if(found)supsert_(ST.PAY,'EMPLOYEE_ID',e.EMPLOYEE_ID,obj);else sappend_(ST.PAY,obj);return{ok:true}}
 function simpleLogout(token){return logout_(token||'')}
