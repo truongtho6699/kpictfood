@@ -387,3 +387,13 @@ function acceptAssignment_(email,data){
   setAssignmentStatus_(a.ASSIGNMENT_ID,'DA_NHAN');log_(user.USER_ID,'ACCEPT_ASSIGNMENT',SHEETS.assignments,a.ASSIGNMENT_ID,'DA_GIAO','DA_NHAN');return {ok:true,status:'DA_NHAN'};
 }
 
+
+function setAssignmentStatus_(id,status){const sh=ss_().getSheetByName(SHEETS.assignments),v=sh.getDataRange().getValues(),h=v[0].map(String),ic=h.indexOf('ASSIGNMENT_ID'),sc=h.indexOf('Trạng thái');if(ic<0||sc<0)return;for(let i=1;i<v.length;i++)if(String(v[i][ic])===String(id)){sh.getRange(i+1,sc+1).setValue(status);return;}}
+function upsertResult_(a,employeeId){
+ const records=readObjects_(SHEETS.performance).filter(r=>String(r.ASSIGNMENT_ID)===String(a.ASSIGNMENT_ID)&&String(r['Trạng thái'])!=='TU_CHOI');if(!records.length)return;
+ const actual=records.reduce((s,r)=>s+Number(r['Giá trị thực hiện']||0),0),raw=a.Target,missing=raw===''||raw===null||raw===undefined,target=missing?'':Number(raw),direction=String(a['Chiều']||'Tăng').toLowerCase(),weight=Number(a['Trọng số %']||0);
+ let completion='',score='',converted='';if(!missing){completion=target===0?(actual===0?1:0):(direction.includes('giảm')?target/Math.max(actual,.0000001):actual/target);score=score_(completion);converted=score*weight/100;}
+ const requireConfirm=String(getConfig_('DATA_CONFIRM_REQUIRED','true')).toLowerCase()==='true',allConfirmed=records.every(r=>String(r['Trạng thái'])==='DA_XAC_NHAN'),dataStatus=missing?'CHO_PHE_DUYET_TARGET':(requireConfirm?(allConfirmed?'DA_XAC_NHAN':'CHO_XAC_NHAN'):'DA_XAC_NHAN');
+ const obj={PERIOD_ID:a.PERIOD_ID,ASSIGNMENT_ID:a.ASSIGNMENT_ID,EMPLOYEE_ID:employeeId,'Mã KPI':a['Mã KPI'],Target:target,'Thực hiện':actual,'% Hoàn thành':completion,'Điểm 1-5':score,'Trọng số %':weight,'Điểm quy đổi':converted,'Trạng thái dữ liệu':dataStatus,'Trạng thái chốt':'DANG_THUC_HIEN'};upsertByKey_(SHEETS.results,'ASSIGNMENT_ID',a.ASSIGNMENT_ID,obj);
+}
+function score_(completion){const x=Number(completion||0),t1=Number(getConfig_('SCORE_1_MAX',.7)),t2=Number(getConfig_('SCORE_2_MAX',.85)),t3=Number(getConfig_('SCORE_3_MAX',.95)),t4=Number(getConfig_('SCORE_4_MAX',1));if(x<t1)return 1;if(x<t2)return 2;if(x<t3)return 3;if(x<t4)return 4;return 5;}
