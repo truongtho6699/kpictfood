@@ -32,8 +32,6 @@ function doPost(e) {
     if (action === 'recordPerformance') return json_(recordPerformance_(email, payload.data || {}));
     if (action === 'confirmPerformance') return json_(confirmPerformance_(email, payload.data || {}));
     if (action === 'acceptAssignment') return json_(acceptAssignment_(email, payload.data || {}));
-    if (action === 'closeAssignment') return json_(closeAssignment_(email, payload.data || {}));
-    if (action === 'acceptAssignment') return json_(acceptAssignment_(email, payload.data || {}));
     if (action === 'allocateAssignment') return json_(allocateAssignment_(email, payload.data || {}));
     if (action === 'closeAssignment') return json_(closeAssignment_(email, payload.data || {}));
     if (action === 'adminSetPassword') return json_(adminSetPassword_(email, payload.data || {}));
@@ -388,55 +386,4 @@ function acceptAssignment_(email,data){
   if(String(a['Trạng thái'])!=='DA_GIAO')throw new Error('ASSIGNMENT_STATUS_INVALID');
   setAssignmentStatus_(a.ASSIGNMENT_ID,'DA_NHAN');log_(user.USER_ID,'ACCEPT_ASSIGNMENT',SHEETS.assignments,a.ASSIGNMENT_ID,'DA_GIAO','DA_NHAN');return {ok:true,status:'DA_NHAN'};
 }
-function closeAssignment_(email,data){
-  const user=resolveUser_(email);if(!user)throw new Error('USER_NOT_AUTHORIZED');
-  const canClose=user['Có quyền chốt KPI']===true||String(user['Có quyền chốt KPI']).toUpperCase()==='TRUE';if(!canClose)throw new Error('NO_CLOSE_PERMISSION');
-  const a=readObjects_(SHEETS.assignments).find(r=>String(r.ASSIGNMENT_ID)===String(data.assignmentId));if(!a)throw new Error('ASSIGNMENT_NOT_FOUND');
-  const emp=readObjects_(SHEETS.employees).find(e=>String(e.EMPLOYEE_ID)===String(a.ASSIGNEE_ID));if(emp&&!scopeEmployee_(user,emp))throw new Error('OUT_OF_SCOPE');
-  const res=readObjects_(SHEETS.results).find(r=>String(r.ASSIGNMENT_ID)===String(a.ASSIGNMENT_ID));if(!res)throw new Error('RESULT_NOT_FOUND');
-  if(String(getConfig_('DATA_CONFIRM_REQUIRED','true')).toLowerCase()==='true'&&String(res['Trạng thái dữ liệu'])!=='DA_XAC_NHAN')throw new Error('RESULT_NOT_CONFIRMED');
-  setAssignmentStatus_(a.ASSIGNMENT_ID,'DA_CHOT');upsertByKey_(SHEETS.results,'ASSIGNMENT_ID',a.ASSIGNMENT_ID,{'Trạng thái chốt':'DA_CHOT'});log_(user.USER_ID,'CLOSE_ASSIGNMENT',SHEETS.assignments,a.ASSIGNMENT_ID,a['Trạng thái'],'DA_CHOT');return {ok:true,status:'DA_CHOT'};
-}
-function setAssignmentStatus_(id,status){
-  const sh=ss_().getSheetByName(SHEETS.assignments),v=sh.getDataRange().getValues(),h=v[0].map(String),ic=h.indexOf('ASSIGNMENT_ID'),sc=h.indexOf('Trạng thái');
-  if(ic<0||sc<0)return;for(let i=1;i<v.length;i++)if(String(v[i][ic])===String(id)){sh.getRange(i+1,sc+1).setValue(status);return;}
-}
 
-function upsertResult_(a,employeeId){
-  const records=readObjects_(SHEETS.performance).filter(r=>String(r.ASSIGNMENT_ID)===String(a.ASSIGNMENT_ID)&&String(r['Trạng thái'])!=='TU_CHOI');
-  if(!records.length)return;
-  const actual=records.reduce((s,r)=>s+Number(r['Giá trị thực hiện']||0),0),target=Number(a.Target||0),direction=String(a['Chiều']||'Tăng').toLowerCase();
-  let completion=0;if(target===0)completion=actual===0?1:0;else completion=direction.includes('giảm')?target/Math.max(actual,0.0000001):actual/target;
-  const score=score_(completion),weight=Number(a['Trọng số %']||0),converted=score*weight/100;
-  const sh=ss_().getSheetByName(SHEETS.results),v=sh.getDataRange().getValues(),h=v[0].map(String),ac=h.indexOf('ASSIGNMENT_ID');
-  const requireConfirm=String(getConfig_('DATA_CONFIRM_REQUIRED','true')).toLowerCase()==='true';
-  const allConfirmed=records.length>0&&records.every(r=>String(r['Trạng thái'])==='DA_XAC_NHAN');
-  const dataStatus=requireConfirm?(allConfirmed?'DA_XAC_NHAN':'CHO_XAC_NHAN'):'DA_XAC_NHAN';
-  const obj={PERIOD_ID:a.PERIOD_ID,ASSIGNMENT_ID:a.ASSIGNMENT_ID,EMPLOYEE_ID:employeeId,'Mã KPI':a['Mã KPI'],Target:target,'Thực hiện':actual,'% Hoàn thành':completion,'Điểm 1-5':score,'Trọng số %':weight,'Điểm quy đổi':converted,'Trạng thái dữ liệu':dataStatus,'Trạng thái chốt':'DANG_THUC_HIEN'};
-  for(let i=1;i<v.length;i++)if(String(v[i][ac])===String(a.ASSIGNMENT_ID)){h.forEach((k,j)=>{if(Object.prototype.hasOwnProperty.call(obj,k))sh.getRange(i+1,j+1).setValue(obj[k])});return;}
-  appendRowByHeaders_(SHEETS.results,obj);
-}
-function score_(completion){
-  const x=Number(completion||0);
-  const t1=Number(getConfig_('SCORE_1_MAX',.7)),t2=Number(getConfig_('SCORE_2_MAX',.85)),t3=Number(getConfig_('SCORE_3_MAX',.95)),t4=Number(getConfig_('SCORE_4_MAX',1));
-  if(x<t1)return 1;if(x<t2)return 2;if(x<t3)return 3;if(x<t4)return 4;return 5;
-}
-
-function positionMatch_(employee, positionName) {
-  const p=String(positionName||'').toLowerCase(), dept=String(employee['Phòng ban']||'').toLowerCase(), title=String(employee['Chức danh']||'').toLowerCase();
-  if (dept.includes('kinh doanh') && (title.includes('trưởng')||title.includes('manager'))) return p==='sale – trưởng phòng';
-  if (dept.includes('kinh doanh')) return p==='sale – nhân viên';
-  if (dept.includes('mua hàng') && title.includes('logistic')) return p==='mua hàng – logistics';
-  if (dept.includes('mua hàng') && (title.includes('chứng từ')||title.includes('nhập khẩu'))) return p==='mua hàng – chứng từ nk';
-  if (dept.includes('mua hàng') && title.includes('trưởng')) return p==='mua hàng – trưởng phòng';
-  if (dept.includes('mua hàng')) return p==='mua hàng – nhân viên';
-  if (dept.includes('kế toán') && (title.includes('trưởng')||title.includes('kế toán trưởng'))) return p==='kế toán – kế toán trưởng';
-  if (dept.includes('kế toán') && title.includes('thuế')) return p==='kế toán – thuế';
-  if (dept.includes('kế toán') && (title.includes('công nợ')||title.includes('kho'))) return p==='kế toán – công nợ & kho';
-  if (dept.includes('kế toán') && (title.includes('thanh toán')||title.includes('ttqt'))) return p==='kế toán – thanh toán & ttqt';
-  if (dept.includes('kế toán') && title.includes('thủ quỹ')) return p==='kế toán – thủ quỹ';
-  if (dept.includes('ban điều hành') && (title.includes('tổng giám đốc')||title==='tgd')) return p==='ban điều hành – tgd';
-  if (dept.includes('ban điều hành') && title.includes('coo')) return p==='ban điều hành – coo';
-  if (dept.includes('ban điều hành') && (title.includes('chủ tịch')||title.includes('bod'))) return p==='ban điều hành – bod';
-  return false;
-}
