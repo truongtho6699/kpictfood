@@ -406,3 +406,24 @@ function upsertResult_(a,employeeId){
  const obj={PERIOD_ID:a.PERIOD_ID,ASSIGNMENT_ID:a.ASSIGNMENT_ID,EMPLOYEE_ID:employeeId,'Mã KPI':a['Mã KPI'],Target:target,'Thực hiện':actual,'% Hoàn thành':completion,'Điểm 1-5':score,'Trọng số %':weight,'Điểm quy đổi':converted,'Trạng thái dữ liệu':dataStatus,'Trạng thái chốt':'DANG_THUC_HIEN'};upsertByKey_(SHEETS.results,'ASSIGNMENT_ID',a.ASSIGNMENT_ID,obj);
 }
 function score_(completion){const x=Number(completion||0),t1=Number(getConfig_('SCORE_1_MAX',.7)),t2=Number(getConfig_('SCORE_2_MAX',.85)),t3=Number(getConfig_('SCORE_3_MAX',.95)),t4=Number(getConfig_('SCORE_4_MAX',1));if(x<t1)return 1;if(x<t2)return 2;if(x<t3)return 3;if(x<t4)return 4;return 5;}
+
+function positionMatch_(employee, positionName) {
+  const norm = s => String(s || '').toLowerCase().replace(/[\u2010-\u2015]/g, '-').replace(/\s+/g, ' ').trim();
+  const p = norm(positionName), dept = norm(employee['Phòng ban'] || employee.DEPARTMENT_ID), title = norm(employee['Chức danh']);
+  if (dept.includes('kinh doanh') && (title.includes('trưởng') || title.includes('manager'))) return p.includes('sale') && p.includes('trưởng');
+  if (dept.includes('kinh doanh')) return p.includes('sale') && p.includes('nhân viên');
+  if (dept.includes('mua hàng') && title.includes('logistic')) return p.includes('mua hàng') && p.includes('logistics');
+  if (dept.includes('mua hàng') && (title.includes('chứng từ') || title.includes('nhập khẩu'))) return p.includes('mua hàng') && p.includes('chứng từ');
+  if (dept.includes('mua hàng') && title.includes('trưởng')) return p.includes('mua hàng') && p.includes('trưởng');
+  if (dept.includes('mua hàng')) return p.includes('mua hàng') && p.includes('nhân viên');
+  if (dept.includes('kế toán') && (title.includes('trưởng') || title.includes('kế toán trưởng'))) return p.includes('kế toán') && p.includes('kế toán trưởng');
+  if (dept.includes('kế toán') && title.includes('thuế')) return p.includes('kế toán') && p.includes('thuế');
+  if (dept.includes('kế toán') && (title.includes('công nợ') || title.includes('kho'))) return p.includes('kế toán') && (p.includes('công nợ') || p.includes('kho'));
+  if (dept.includes('kế toán') && (title.includes('thanh toán') || title.includes('ttqt'))) return p.includes('kế toán') && (p.includes('thanh toán') || p.includes('ttqt'));
+  if (dept.includes('kế toán') && title.includes('thủ quỹ')) return p.includes('kế toán') && p.includes('thủ quỹ');
+  if (dept.includes('ban điều hành') && (title.includes('tổng giám đốc') || title === 'tgd')) return p.includes('ban điều hành') && (p.includes('tgd') || p.includes('tổng giám đốc'));
+  if (dept.includes('ban điều hành') && title.includes('coo')) return p.includes('ban điều hành') && p.includes('coo');
+  if (dept.includes('ban điều hành') && (title.includes('chủ tịch') || title.includes('bod'))) return p.includes('ban điều hành') && p.includes('bod');
+  return false;
+}
+
