@@ -59,6 +59,15 @@ function simpleAdminBootstrapAccounts(d){
 }
 function simpleAdminEmployeeList(d){const u=scurrentUser_(d.token);if(String(u['Vai trò hệ thống'])!=='ADMIN')throw Error('Chỉ Admin được xem');return sclient_(srows_(ST.EMP))}
 
+function simpleAdminUpsertEmployee(d){
+ const u=scurrentUser_(d.token);if(String(u['Vai trò hệ thống'])!=='ADMIN')throw Error('Chỉ Admin được cập nhật nhân sự');
+ const name=String(d.name||'').trim(),dept=String(d.departmentId||'').trim(),title=String(d.title||'').trim();if(!name||!dept||!title)throw Error('Thiếu thông tin nhân sự');
+ let id=String(d.employeeId||'').trim();if(!id)id='NV'+Utilities.getUuid().slice(0,6).toUpperCase();
+ let email=String(d.email||'').trim().toLowerCase();if(!email)email='nv'+id.toLowerCase().replace(/[^a-z0-9]/g,'')+'@ctfoods.vn';
+ const dep=srows_(ST.DEP).find(x=>String(x.DEPARTMENT_ID)===dept),obj={EMPLOYEE_ID:id,'Họ tên':name,Email:email,DEPARTMENT_ID:dept,'Phòng ban':dep?dep['Phòng ban']||dep['Tên phòng ban']||dept:dept,'Chức danh':title,MANAGER_ID:d.managerId||'','Quản lý trực tiếp':'','Trạng thái':'ACTIVE','Vai trò hệ thống':d.role||'EMPLOYEE'};
+ supsert_(ST.EMP,'EMPLOYEE_ID',id,obj);return{ok:true,employeeId:id,email:email}
+}
+
 function simpleLogin(data){return login_(data||{})}
 function simplePayrollSave(d){const u=scurrentUser_(d.token);if(!['ADMIN','BOARD','EXECUTIVE'].includes(String(u['Vai trò hệ thống']||'')))throw Error('Không có quyền cập nhật lương');const e=srows_(ST.EMP).find(x=>String(x.EMPLOYEE_ID)===String(d.employeeId));if(!e)throw Error('Không tìm thấy nhân viên');const p=d.period||scurrentPeriod_(),key=p+'|'+e.EMPLOYEE_ID,rows=srows_(ST.PAY),found=rows.find(x=>sper_(x.PERIOD_ID)===p&&String(x.EMPLOYEE_ID)===String(e.EMPLOYEE_ID));const obj={PERIOD_ID:p,EMPLOYEE_ID:e.EMPLOYEE_ID,'Nhân viên':e['Họ tên'],'1P dự tính':Number(d.p1||0),'2P dự tính':Number(d.p2||0),'3P dự tính':Number(d.p3||0),'Tổng dự tính':Number(d.p1||0)+Number(d.p2||0)+Number(d.p3||0),'Trạng thái':'NHAP'};if(found)supsert_(ST.PAY,'EMPLOYEE_ID',e.EMPLOYEE_ID,obj);else sappend_(ST.PAY,obj);return{ok:true}}
 function simpleLogout(token){return logout_(token||'')}
