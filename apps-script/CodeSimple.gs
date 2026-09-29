@@ -44,4 +44,5 @@ function simpleSaveSalary3P(d){
 }
 
 function simpleLogin(data){return login_(data||{})}
+function simplePayrollSave(d){const u=scurrentUser_(d.token);if(!['ADMIN','BOARD','EXECUTIVE'].includes(String(u['Vai trò hệ thống']||'')))throw Error('Không có quyền cập nhật lương');const e=srows_(ST.EMP).find(x=>String(x.EMPLOYEE_ID)===String(d.employeeId));if(!e)throw Error('Không tìm thấy nhân viên');const p=d.period||scurrentPeriod_(),key=p+'|'+e.EMPLOYEE_ID,rows=srows_(ST.PAY),found=rows.find(x=>sper_(x.PERIOD_ID)===p&&String(x.EMPLOYEE_ID)===String(e.EMPLOYEE_ID));const obj={PERIOD_ID:p,EMPLOYEE_ID:e.EMPLOYEE_ID,'Nhân viên':e['Họ tên'],'1P dự tính':Number(d.p1||0),'2P dự tính':Number(d.p2||0),'3P dự tính':Number(d.p3||0),'Tổng dự tính':Number(d.p1||0)+Number(d.p2||0)+Number(d.p3||0),'Trạng thái':'NHAP'};if(found)supsert_(ST.PAY,'EMPLOYEE_ID',e.EMPLOYEE_ID,obj);else sappend_(ST.PAY,obj);return{ok:true}}
 function simpleLogout(token){return logout_(token||'')}
