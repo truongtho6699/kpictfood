@@ -68,6 +68,28 @@ function simpleAdminUpsertEmployee(d){
  supsert_(ST.EMP,'EMPLOYEE_ID',id,obj);return{ok:true,employeeId:id,email:email}
 }
 
+function simpleAdminSaveKpi(d){
+ const u=scurrentUser_(d.token);if(String(u['Vai trò hệ thống'])!=='ADMIN')throw Error('Chỉ Admin được cập nhật KPI');
+ const code=String(d.code||'').trim().toUpperCase(),name=String(d.name||'').trim();if(!code||!name)throw Error('Thiếu mã hoặc tên KPI');
+ supsert_(ST.KPI,'Mã KPI',code,{'Mã KPI':code,'Nhóm KPI':d.group||'','Tên KPI':name,'Đơn vị':d.unit||'','Công thức/Định nghĩa':d.formula||'','Nguồn dữ liệu':d.source||'','Chiều':d.direction||'Tăng','Target tham chiếu':d.referenceTarget===''?'':Number(d.referenceTarget),'Trạng thái Target':d.referenceTarget===''?'CHO_PHE_DUYET':'ACTIVE','Ghi chú chuẩn hóa':d.note||''});return{ok:true,code:code}
+}
+function simpleAdminSaveRoleKpi(d){
+ const u=scurrentUser_(d.token);if(String(u['Vai trò hệ thống'])!=='ADMIN')throw Error('Chỉ Admin được cấu hình KPI');
+ const pos=String(d.position||'').trim(),code=String(d.code||'').trim();if(!pos||!code)throw Error('Thiếu vị trí hoặc KPI');
+ const m=srows_(ST.KPI).find(x=>String(x['Mã KPI'])===code);if(!m)throw Error('Mã KPI chưa có trong danh mục');
+ const rows=srows_(ST.ROLE),old=rows.find(x=>String(x['Đơn vị/Vị trí'])===pos&&String(x['Mã KPI'])===code);
+ if(old){const sh=sss_().getSheetByName(ST.ROLE),v=sh.getDataRange().getValues(),h=v[0].map(String),pi=h.indexOf('Đơn vị/Vị trí'),ki=h.indexOf('Mã KPI');for(let i=1;i<v.length;i++)if(String(v[i][pi])===pos&&String(v[i][ki])===code){const obj={'Tên KPI':m['Tên KPI'],'Trọng số mặc định %':d.weight===''?'':Number(d.weight),'Target mặc định':d.target===''?'':Number(d.target),'Trạng thái':d.target===''||d.weight===''?'CHO_PHE_DUYET':'ACTIVE'};Object.keys(obj).forEach(k=>{const j=h.indexOf(k);if(j>=0)sh.getRange(i+1,j+1).setValue(obj[k])});break}}
+ else sappend_(ST.ROLE,{'Đơn vị/Vị trí':pos,'Mã KPI':code,'Tên KPI':m['Tên KPI'],'Trọng số mặc định %':d.weight===''?'':Number(d.weight),'Target mặc định':d.target===''?'':Number(d.target),'Trạng thái':d.target===''||d.weight===''?'CHO_PHE_DUYET':'ACTIVE'});
+ return{ok:true}
+}
+function simpleBulkAssignRoleKpis(d){
+ const u=scurrentUser_(d.token),role=String(u['Vai trò hệ thống']);if(!['ADMIN','BOARD','EXECUTIVE','MANAGER'].includes(role))throw Error('Không có quyền giao KPI');
+ const emp=srows_(ST.EMP).find(x=>String(x.EMPLOYEE_ID)===String(d.employeeId));if(!emp||!sscope_(u,emp))throw Error('Ngoài phạm vi quản lý');
+ const pos=String(d.position||''),ks=srows_(ST.ROLE).filter(x=>String(x['Đơn vị/Vị trí'])===pos&&String(x['Trạng thái'])==='ACTIVE');if(!ks.length)throw Error('Vị trí chưa có KPI ACTIVE');
+ const total=ks.reduce((s,x)=>s+Number(x['Trọng số mặc định %']||0),0);if(Math.abs(total-100)>.001)throw Error('Tổng trọng số vị trí hiện là '+total+'%, phải bằng 100%');
+ let count=0;ks.forEach(k=>{try{simpleCreateAssignment({token:d.token,employeeId:emp.EMPLOYEE_ID,position:pos,kpiCode:k['Mã KPI'],target:''});count++}catch(e){if(!String(e.message||e).includes('đã được giao'))throw e}});return{ok:true,count:count}
+}
+
 function simpleLogin(data){return login_(data||{})}
 function simplePayrollSave(d){const u=scurrentUser_(d.token);if(!['ADMIN','BOARD','EXECUTIVE'].includes(String(u['Vai trò hệ thống']||'')))throw Error('Không có quyền cập nhật lương');const e=srows_(ST.EMP).find(x=>String(x.EMPLOYEE_ID)===String(d.employeeId));if(!e)throw Error('Không tìm thấy nhân viên');const p=d.period||scurrentPeriod_(),key=p+'|'+e.EMPLOYEE_ID,rows=srows_(ST.PAY),found=rows.find(x=>sper_(x.PERIOD_ID)===p&&String(x.EMPLOYEE_ID)===String(e.EMPLOYEE_ID));const obj={PERIOD_ID:p,EMPLOYEE_ID:e.EMPLOYEE_ID,'Nhân viên':e['Họ tên'],'1P dự tính':Number(d.p1||0),'2P dự tính':Number(d.p2||0),'3P dự tính':Number(d.p3||0),'Tổng dự tính':Number(d.p1||0)+Number(d.p2||0)+Number(d.p3||0),'Trạng thái':'NHAP'};if(found)supsert_(ST.PAY,'EMPLOYEE_ID',e.EMPLOYEE_ID,obj);else sappend_(ST.PAY,obj);return{ok:true}}
 function simpleLogout(token){return logout_(token||'')}
