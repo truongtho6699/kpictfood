@@ -15,6 +15,6 @@ export default {
         return Response.json({ok:false,error:'API_PROXY_ERROR'},{status:502});
       }
     }
-    if(url.pathname==='/health') return Response.json({ok:true,service:'kpictfood',proxy:'/api',revision:'appscript-LUhP'}); return env.ASSETS.fetch(request);
+    if(url.pathname==='/health') return Response.json({ok:true,service:'kpictfood',proxy:'/api',revision:'appscript-xCId'}); return env.ASSETS.fetch(request);
   }
 };
