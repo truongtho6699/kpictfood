@@ -32,6 +32,8 @@ function doPost(e) {
     if (action === 'recordPerformance') return json_(recordPerformance_(email, payload.data || {}));
     if (action === 'confirmPerformance') return json_(confirmPerformance_(email, payload.data || {}));
     if (action === 'acceptAssignment') return json_(acceptAssignment_(email, payload.data || {}));
+    if (action === 'closeAssignment') return json_(closeAssignment_(email, payload.data || {}));
+    if (action === 'acceptAssignment') return json_(acceptAssignment_(email, payload.data || {}));
     if (action === 'allocateAssignment') return json_(allocateAssignment_(email, payload.data || {}));
     if (action === 'closeAssignment') return json_(closeAssignment_(email, payload.data || {}));
     if (action === 'adminSetPassword') return json_(adminSetPassword_(email, payload.data || {}));
@@ -379,6 +381,22 @@ function confirmPerformance_(email,data){
   throw new Error('PERFORMANCE_NOT_FOUND');
 }
 
+function acceptAssignment_(email,data){
+  const user=resolveUser_(email);if(!user)throw new Error('USER_NOT_AUTHORIZED');
+  const a=readObjects_(SHEETS.assignments).find(r=>String(r.ASSIGNMENT_ID)===String(data.assignmentId));if(!a)throw new Error('ASSIGNMENT_NOT_FOUND');
+  if(String(a.ASSIGNEE_ID)!==String(user.EMPLOYEE_ID))throw new Error('OUT_OF_SCOPE');
+  if(String(a['Trạng thái'])!=='DA_GIAO')throw new Error('ASSIGNMENT_STATUS_INVALID');
+  setAssignmentStatus_(a.ASSIGNMENT_ID,'DA_NHAN');log_(user.USER_ID,'ACCEPT_ASSIGNMENT',SHEETS.assignments,a.ASSIGNMENT_ID,'DA_GIAO','DA_NHAN');return {ok:true,status:'DA_NHAN'};
+}
+function closeAssignment_(email,data){
+  const user=resolveUser_(email);if(!user)throw new Error('USER_NOT_AUTHORIZED');
+  const canClose=user['Có quyền chốt KPI']===true||String(user['Có quyền chốt KPI']).toUpperCase()==='TRUE';if(!canClose)throw new Error('NO_CLOSE_PERMISSION');
+  const a=readObjects_(SHEETS.assignments).find(r=>String(r.ASSIGNMENT_ID)===String(data.assignmentId));if(!a)throw new Error('ASSIGNMENT_NOT_FOUND');
+  const emp=readObjects_(SHEETS.employees).find(e=>String(e.EMPLOYEE_ID)===String(a.ASSIGNEE_ID));if(emp&&!scopeEmployee_(user,emp))throw new Error('OUT_OF_SCOPE');
+  const res=readObjects_(SHEETS.results).find(r=>String(r.ASSIGNMENT_ID)===String(a.ASSIGNMENT_ID));if(!res)throw new Error('RESULT_NOT_FOUND');
+  if(String(getConfig_('DATA_CONFIRM_REQUIRED','true')).toLowerCase()==='true'&&String(res['Trạng thái dữ liệu'])!=='DA_XAC_NHAN')throw new Error('RESULT_NOT_CONFIRMED');
+  setAssignmentStatus_(a.ASSIGNMENT_ID,'DA_CHOT');upsertByKey_(SHEETS.results,'ASSIGNMENT_ID',a.ASSIGNMENT_ID,{'Trạng thái chốt':'DA_CHOT'});log_(user.USER_ID,'CLOSE_ASSIGNMENT',SHEETS.assignments,a.ASSIGNMENT_ID,a['Trạng thái'],'DA_CHOT');return {ok:true,status:'DA_CHOT'};
+}
 function setAssignmentStatus_(id,status){
   const sh=ss_().getSheetByName(SHEETS.assignments),v=sh.getDataRange().getValues(),h=v[0].map(String),ic=h.indexOf('ASSIGNMENT_ID'),sc=h.indexOf('Trạng thái');
   if(ic<0||sc<0)return;for(let i=1;i<v.length;i++)if(String(v[i][ic])===String(id)){sh.getRange(i+1,sc+1).setValue(status);return;}
